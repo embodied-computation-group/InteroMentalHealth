@@ -1,0 +1,760 @@
+---
+title: "Psych input plots"
+---
+
+# Load psych data (mental health surveys/factors)
+```{r}
+rm(list = ls())
+
+if (!require("pacman")) install.packages("pacman")
+  pacman::p_load(circlize, R.matlab, dplyr, stringr, readr, tidyr, ggplot2)
+
+alldata <- read_csv("~/Git/InteroMentalHealth/data/alldata.csv")
+colnames(alldata) <- gsub("_", ".", colnames(alldata)) 
+cols = c("participant.id", "aq10", "asrs.combined.sum", "mdi", "phq9", "phq15", "pss", "sias", "stai.trait", "maia.full.mean", "multiEFA.l2.Negative Mental Health", "multiEFA.l2.Anxiety & ADHD", "multiEFA.l1.Social Anxiety", "multiEFA.l1.Happiness/Self-Esteem", "multiEFA.l1.Insomnia/Fatigue", "multiEFA.l1.Inattentiveness", "multiEFA.l1.Depression", "multiEFA.l1.Anxiety", "multiEFA.l1.Restlessness", "multiEFA.l1.Stress", "multiEFA.l1.Autism", "multiEFA.l1.Somatic", "multiEFA.l1.Impulsivity")
+alldata <- alldata[ ,cols]
+# get common subjects
+alldata <- na.omit(alldata)
+
+
+# survey summary scores
+cols = c("aq10", "asrs.combined.sum", "mdi", "phq9", "phq15", "pss", "sias", "stai.trait", "maia.full.mean")
+surveyscores <- alldata[ ,cols]
+colnames(surveyscores) <- c("Autism (AQ10)", "ADHD (ASRS)", "Depression (MDI)", "Depression (PHQ9)", "Somatic (PHQ15)", "Stress (PSS)", "Social Anxiety (SIAS)", "Trait Anxiety (STAI)", "Interoception (MAIA)")
+
+# # Factor Scores
+# cols = c("multiEFA.l2.Negative Mental Health", "multiEFA.l2.Anxiety & ADHD", "multiEFA.l1.Social Anxiety", "multiEFA.l1.Happiness/Self-Esteem", "multiEFA.l1.Insomnia/Fatigue", "multiEFA.l1.Inattentiveness", "multiEFA.l1.Depression", "multiEFA.l1.Anxiety", "multiEFA.l1.Restlessness", "multiEFA.l1.Stress", "multiEFA.l1.Autism", "multiEFA.l1.Somatic", "multiEFA.l1.Impulsivity")
+# factorscores <- alldata[ ,cols]
+# colnames(factorscores) <- c("Negative Mental Health", "Anxiety & ADHD", "Social Anxiety", "Happiness/Self-Esteem", "Insomnia/Fatigue", "Inattentiveness", "Depression", "Anxiety", "Restlessness", "Stress", "Autism", "Somatic Symptoms", "Impulsivity")
+
+```
+
+
+# Circular histagram plot
+```{r}
+# long format for figure
+data <- surveyscores %>%
+  pivot_longer(cols = everything(), names_to = "survey", values_to = "scores") 
+
+# normalise each survey so histograms chunks are equal size
+data <- data %>%
+  group_by(survey) %>%
+  mutate(scores = as.vector(scale(scores))) %>%  # Convert back to vector
+  ungroup()
+
+# Set up the PNG device to save the image
+png("~/Git/InteroMentalHealth/figures/TaskFigs/surveyscores_summary_withmaia_notext.png", width = 1600, height = 1600)  # 
+
+circos.clear()
+
+circos.initialize(factors = data$survey, x = data$scores)
+
+
+hist_colors <- setNames(c("#B5DBFF", "#7BB8F0", "#4F89E6", "#A78CD9", "#C58AE8", "#AB5AAC", "#E678AD", "#CF4D6F", "#B0415D"), unique_surveys <- unique(data$survey))
+
+circos.par("track.height" = 0.225)
+circos.trackPlotRegion(factors = data$survey, y = data$scores, bg.lwd = 3, bg.col = hist_colors[data$survey], panel.fun = function(x, y) {
+    sector_name <- get.cell.meta.data("sector.index")  # Get sector name
+    xlim <- get.cell.meta.data("xlim")  # Get x-axis limits
+    ylim <- get.cell.meta.data("ylim")  # Get y-axis limits
+    
+    label <- sub(" \\(", "\n(", sector_name)
+    
+    # Add text, facing inward
+    circos.text(mean(xlim), ylim[1] + 4.25, label,
+                facing = "inside", niceFacing = TRUE,
+                adj = c(0.5, 0.5), cex = 4, col = "black", font = 2)
+
+    # Add labels at the middle of each sector
+    #circos.text(mean(xlim), mean(ylim), sector_name, 
+                #facing = "bending.inside", niceFacing = TRUE, cex = 3.35, col = "black", font = 2)
+    circos.axis(
+        h = "bottom",
+        major.tick = TRUE,
+        labels.cex = 3.25,
+        direction = "outside",
+        #lwd = 2 
+    )
+})
+
+circos.par("track.height" = 0.5)
+#max_abs_y <- max(abs(data$y_long))
+circos.trackHist(data$survey, data$scores, bg.col = "white", col = hist_colors[data$survey], lwd = 3, bg.lwd = 2) 
+
+# Adding text to the center
+text(0,0,"Survey\nScores", cex = 5, col = "#505050", font = 2)
+
+dev.off()
+
+```
+
+
+# check how many subjects cross psych diagnostic thresholds for each survey
+```{r}
+
+# load grand summary score tsv
+psych <- read.table('/mnt/raid0/scratch/BIDS/derivatives/summaries/survey/summary_scores/grand/grand_surveyscores_summary.tsv', header = TRUE, sep = "\t")
+subIDs = read_csv('~/Git/InteroMentalHealth/data/PsychEFAs/SubIDs_PsychEFA.csv')$x
+  
+
+# select subjects in EFA
+psych <- psych %>% filter(participant_id %in% subIDs)
+
+cutoffs <- c("aq10_cutoff", "asrs_a_cutoff", "mdi_cutoff", "phq9_cutoff", "phq15_cutoff", "pss_cutoff", "sias_cutoff", "stai_trait_cutoff44", "stai_trait_cutoff_cat")
+
+survey_cutoffs <- psych[, cutoffs] # select survey cutoff cols  - # colSums(is.na(survey_cutoffs))
+
+print(sprintf('Autism diagnosis (aq10) = %f percent', (sum(as.numeric(survey_cutoffs[, 'aq10_cutoff']))/nrow(psych)) * 100))
+print(sprintf('ADHD diagnosis (asrs) = %f percent', (sum(as.numeric(survey_cutoffs[, 'asrs_a_cutoff']))/nrow(psych)) * 100))  
+#print(sprintf('ADHD diagnosis (asrs) = %f percent', (sum(as.numeric(survey_cutoffs[, 'asrs_a_cutoff']), na.rm = TRUE)/sum(!is.na(survey_cutoffs[, 'asrs_a_cutoff']))) * 100))
+print(sprintf('Depression diagnosis - high diagnosis (mdi) = %f percent', (table(survey_cutoffs[, 'mdi_cutoff'])[1]/nrow(psych)) * 100))
+print(sprintf('Depression diagnosis - moderate diagnosis (mdi) = %f percent', (table(survey_cutoffs[, 'mdi_cutoff'])[3]/nrow(psych)) * 100))
+print(sprintf('Depression diagnosis - mild diagnosis (mdi) = %f percent', (table(survey_cutoffs[, 'mdi_cutoff'])[2]/nrow(psych)) * 100))
+print(sprintf('Depression diagnosis - severe diagnosis (phq9) = %f percent', (table(survey_cutoffs[, 'phq9_cutoff'])[5]/nrow(psych)) * 100))
+print(sprintf('Depression diagnosis - moderately-severe diagnosis (phq9) = %f percent', (table(survey_cutoffs[, 'phq9_cutoff'])[3]/nrow(psych)) * 100))
+print(sprintf('Depression diagnosis - moderate diagnosis (phq9) = %f percent', (table(survey_cutoffs[, 'phq9_cutoff'])[2]/nrow(psych)) * 100))
+print(sprintf('Depression diagnosis - mild diagnosis (phq9) = %f percent', (table(survey_cutoffs[, 'phq9_cutoff'])[1]/nrow(psych)) * 100))
+print(sprintf('Somatic Symptoms diagnosis - high diagnosis (phq15) = %f percent', (table(survey_cutoffs[, 'phq15_cutoff'])[1]/nrow(psych)) * 100))
+print(sprintf('Somatic Symptoms diagnosis - medium diagnosis (phq15) = %f percent', (table(survey_cutoffs[, 'phq15_cutoff'])[3]/nrow(psych)) * 100))
+print(sprintf('Stress diagnosis - high diagnosis (pss) = %f percent', (table(survey_cutoffs[, 'pss_cutoff'])[1]/nrow(psych)) * 100))
+print(sprintf('Stress diagnosis - medium diagnosis (pss) = %f percent', (table(survey_cutoffs[, 'pss_cutoff'])[3]/nrow(psych)) * 100))
+print(sprintf('Social Anxiety diagnosis (sias) = %f percent', (sum(as.numeric(survey_cutoffs[, 'sias_cutoff']))/nrow(psych)) * 100))
+print(sprintf('Trait Anxiety diagnosis (stai p2) = %f percent', (sum(as.numeric(survey_cutoffs[, 'stai_trait_cutoff44']))/nrow(psych)) * 100))
+print(sprintf('Trait Anxiety diagnosis - High Anxiety (stai p2) = %f percent', (table(survey_cutoffs[, 'stai_trait_cutoff_cat'])[1]/nrow(psych)) * 100))
+print(sprintf('Trait Anxiety diagnosis - Moderate Anxiety (stai p2) = %f percent', (table(survey_cutoffs[, 'stai_trait_cutoff_cat'])[3]/nrow(psych)) * 100))
+
+```
+
+
+# age & gender distribution
+```{r}
+library(gridExtra)
+
+alldata <- read_csv("~/Git/InteroMentalHealth/data/alldata.csv")
+colnames(alldata) <- gsub("_", ".", colnames(alldata)) 
+cols = c("participant.id", "age", "gender", "aq10", "asrs.combined.sum", "mdi", "phq9", "phq15", "pss", "sias", "stai.trait", "maia.full.mean", "multiEFA.l2.Negative Mental Health", "multiEFA.l2.Anxiety & ADHD", "multiEFA.l1.Social Anxiety", "multiEFA.l1.Happiness/Self-Esteem", "multiEFA.l1.Insomnia/Fatigue", "multiEFA.l1.Inattentiveness", "multiEFA.l1.Depression", "multiEFA.l1.Anxiety", "multiEFA.l1.Restlessness", "multiEFA.l1.Stress", "multiEFA.l1.Autism", "multiEFA.l1.Somatic", "multiEFA.l1.Impulsivity")
+alldata <- alldata[ ,cols]
+# get common subjects
+alldata <- na.omit(alldata)
+
+
+plotage <- ggplot(alldata, aes(x = age)) +
+  geom_histogram(
+    binwidth = 1,                  # Adjust bin width
+    fill = "#65A4A5", #"#990099", #skyblue",                 # Fill color
+    color = "white",                  # Border color
+    alpha = 0.7                       # Transparency
+  ) +
+  labs(
+    #title = " Distribution of Age",    # Title
+    x = "Age (Years)",                      # X-axis label
+    y = "Frequency"                   # Y-axis label
+  ) +
+  theme_minimal() +                   # Use a minimal theme
+  theme(
+    #plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  # Center and style title
+    axis.title.x = element_text(size = 22, margin = margin(t = 7.5)),   # Space above x-axis title
+    axis.title.y = element_text(size = 22, margin = margin(r = 7.5)),   # Space to the right of y-axis title
+    axis.text.x = element_text(size = 22, margin = margin(t = 5)),     # Space above x-axis labels
+    axis.text.y = element_text(size = 22, margin = margin(r = 5))      # Space to the right of y-axis labels
+  )
+
+
+# Create a bar plot for the gender variable
+alldata$gender <- factor(alldata$gender, levels = c(1, 2, 3), labels = c("Female", "Male", "Other"))
+plotgender <- ggplot(alldata, aes(x = gender)) +
+  geom_bar(
+    fill = "#65A4A5",                   # Customize fill color
+    color = "white",                    # Customize border color
+    alpha = 0.7,                        # Set transparency
+    width = 0.5                          # Set transparency
+  ) +
+  labs(
+    #title = "Distribution of Gender",   # Add a title
+    x = "Gender",                       # Label the x-axis
+    y = "Frequency"                         # Label the y-axis
+  ) +
+  theme_minimal() +                     # Apply a clean, minimal theme
+  theme(
+    #plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  # Style the title
+    axis.title.x = element_text(size = 22, margin = margin(t = 7.5)),   # Space above x-axis title
+    axis.title.y = element_text(size = 22, margin = margin(r = 7.5)),   # Space to the right of y-axis title
+    axis.text.x = element_text(size = 22, margin = margin(t = 5)),     # Space above x-axis labels
+    axis.text.y = element_text(size = 22, margin = margin(r = 5))      # Space to the right of y-axis labels
+  )
+
+# Arrange the plots side by side
+combined_plot <- grid.arrange(plotage, plotgender, ncol = 2, widths = c(2.25, 1.25))
+ggsave("~/Git/InteroMentalHealth/figures/TaskFigs/age_gender_distr.png", combined_plot, width = 12, height = 6)
+
+# Demographics of N=500 sample for Mental Health EFA
+# age
+min_age = min(alldata$age)
+max_age = max(alldata$age)
+median_age = median(alldata$age)
+#gender
+Nfemales = sum(alldata$gender == 1)   
+Nmales = sum(alldata$gender == 2)   
+Nother = sum(alldata$gender == 3)  
+
+
+# overlapping intero & mental health sample
+alldata <- read_csv("~/Git/InteroMentalHealth/data/alldata.csv")
+colnames(alldata) <- gsub("_", ".", colnames(alldata)) 
+cols = c("participant.id", "age", "gender", "HRD.slope", "multiEFA.l2.Negative Mental Health")
+alldata <- alldata[ ,cols]
+# get common subjects
+alldata <- na.omit(alldata)
+
+
+alldata <- read_csv("~/Git/InteroMentalHealth/data/alldata.csv")
+colnames(alldata) <- gsub("_", ".", colnames(alldata)) 
+cols = c("participant.id", "age", "gender", "RRST.slope", "multiEFA.l2.Negative Mental Health")
+alldata <- alldata[ ,cols]
+# get common subjects
+alldata <- na.omit(alldata)
+
+
+# HRDT sample
+alldata <- read_csv("~/Git/InteroMentalHealth/data/alldata.csv")
+colnames(alldata) <- gsub("_", ".", colnames(alldata)) 
+cols = c("participant.id", "age", "gender", "HRD.slope")
+alldata <- alldata[ ,cols]
+# get common subjects
+alldata <- na.omit(alldata)
+
+# RRST sample
+alldata <- read_csv("~/Git/InteroMentalHealth/data/alldata.csv")
+colnames(alldata) <- gsub("_", ".", colnames(alldata)) 
+cols = c("participant.id", "age", "gender", "RRST.slope")
+alldata <- alldata[ ,cols]
+# get common subjects
+alldata <- na.omit(alldata)
+
+```
+
+# Count cut-off mental health categories
+```{r}
+library(dplyr)
+library(tidyr)
+library(purrr)
+ 
+# # for binary cutoffs 
+# ids_by_survey_bin <- psych %>%
+#   select(participant_id, all_of(cutoffs_bin)) %>%
+#   pivot_longer(-participant_id, names_to = "survey", values_to = "flag") %>%
+#   mutate(flag = as.numeric(flag)) %>%               # works for 0/1, TRUE/FALSE
+#   filter(!is.na(flag), flag == 1) %>%
+#   group_by(survey) %>%
+#   summarise(
+#     n = n(),
+#     participant_ids = list(participant_id),
+#     .groups = "drop"
+#   )
+# ids_by_survey_bin
+
+cutoffs_cat <- c("aq10_cutoff", "asrs_a_cutoff",  "mdi_cutoff", "phq9_cutoff", "phq15_cutoff", "pss_cutoff", "sias_cutoff", "stai_trait_cutoff44") # also "stai_trait_cutoff_cat"
+
+ids_by_survey_cat <- psych %>%
+  dplyr::select(participant_id, dplyr::all_of(cutoffs_cat)) %>%
+  tidyr::pivot_longer(
+    -participant_id,
+    names_to = "survey",
+    values_to = "level"
+  ) %>%
+  dplyr::filter(!is.na(level)) %>%
+  dplyr::group_by(survey, level) %>%
+  dplyr::summarise(
+    n = dplyr::n(),
+    #participant_ids = list(participant_id),
+    .groups = "drop"
+  )
+
+ids_by_survey_cat
+
+
+
+# select those who cross-diagnostic cut-offs only
+cutoff_rules <- list(
+  "aq10"        = ~ aq10 >= 6,
+  "asrs_a_sum_binary"      = ~ asrs_a_sum_binary >= 4, #(although we used combined a+b score in main analysis?)
+  "mdi"         = ~ mdi >= 26,   # ≥ moderate (or ≥21 for mild depression)
+  "phq9"        = ~ phq9 >= 10,  # ≥ moderate (or ≥5 for mild depression)
+  "phq15"       = ~ phq15 >= 10, # ≥ medium (or ≥5 for low somatic symptoms)
+  "pss"         = ~ pss >= 14,   # ≥ medium (or ≥14 for medium stress)
+  "sias"        = ~ sias >= 36,
+  "stai_trait"  = ~ stai_trait >= 44
+)
+
+
+library(purrr)
+library(rlang)
+library(tibble)
+
+num_vars <- c("aq10","asrs_a_sum_binary","mdi","phq9","phq15","pss","sias","stai_trait")
+psych <- psych %>%mutate(across(all_of(num_vars), as.numeric))
+
+cutoff_counts_simple <- imap_dfr(cutoff_rules, function(fml, survey) {
+  meet <- eval_tidy(fml[[2]], data = psych)
+
+  tibble(
+    survey = survey,
+    below = sum(meet %in% FALSE, na.rm = TRUE),
+    above = sum(meet %in% TRUE,  na.rm = TRUE)
+  )
+})
+
+cutoff_counts_simple
+
+```
+
+
+# Mental health cut-off analyses
+```{r}
+## intero data preprocess
+alldata <- read_csv(here::here("data", "alldata.csv"))
+# preprocess slope & M-Ratio for intero tasks
+# Invert scale of hrd/extero slope (so higher = steeper slope (same as RRST)) (for both intero & extero)
+alldata[ ,'HRD_slope'] <- -(alldata[ ,'HRD_slope'])
+alldata[ ,'HRDextero_slope'] <- -(alldata[ ,'HRDextero_slope'])
+
+# M-Ratio: Replace negative M-Ratio values with NA 
+cols_to_modify <- c("mratio_hrd", "mratio_rrst", "mratio_extero")
+alldata[cols_to_modify] <- lapply(alldata[cols_to_modify], function(x) ifelse(x < 0, NA, x))
+
+# M-Ratio: remove high outliers from M-Ratio (MAD-based outlier removal to selected columns) 
+alldata[cols_to_modify] <- lapply(alldata[cols_to_modify], function(x) {
+  median_x <- median(x, na.rm = TRUE)
+  mad_x <- mad(x, na.rm = TRUE)
+  x[abs(x - median_x) > 3 * mad_x] <- NA
+  return(x) 
+})
+
+# prepare intero + survey data to correlate
+colnames(alldata) <- gsub("_", ".", colnames(alldata))
+cols = c("RRST.conf", "RRST.slope", "RRST.thresh", "mratio.rrst", "HRD.conf", "HRD.slope", "HRD.absthresh", "mratio.hrd", 'maia.notice', 'maia.ndistract', 'maia.nworry', 'maia.attnReg', 'maia.EmoAware', 'maia.SelfRef', 'maia.listen', 'maia.trust', 'aq10', 'asrs.a.sum.binary', 'mdi', 'phq9', 'phq15', 'pss', 'sias', 'stai.trait') #'asrs.b.sum',  'asrs.a.sum' !! (there is sum & binary sum for cut off diagnosis!!)
+corrdata <- alldata[ ,cols]#[complete.cases(alldata[, cols]),] # select cols 
+colnames(corrdata) <- c("RRST Conf", "RRST Slope", "RRST Thresh", "RRST MRatio", "HRDT Conf", "HRDT Slope", "HRDT Thresh", "HRDT MRatio", 'MAIA Notice', 'MAIA NotDistract', 'MAIA NotWorry', 'MAIA AttenReg', 'MAIA EmotAware', 'MAIA SelfReg', 'MAIA Listen', 'MAIA Trust', 'AQ10', 'ASRS.A', 'MDI', 'PHQ9', 'PHQ15', 'PSS', 'SIAS', 'STAI.trait') #"asrs_combined_sum" 'ASRS.B'
+
+# select those who cross-diagnostic cut-offs only
+cutoff_rules <- list(
+  "AQ10"        = ~ AQ10 >= 6,
+  "ASRS.A"      = ~ ASRS.A >= 4, #(although we used combined a+b score in main analysis?)
+  "MDI"         = ~ MDI >= 26,   # ≥ moderate (or ≥21 for mild depression)
+  "PHQ9"        = ~ PHQ9 >= 10,  # ≥ moderate (or ≥5 for mild depression)
+  "PHQ15"       = ~ PHQ15 >= 10, # ≥ medium (or ≥5 for low somatic symptoms)
+  "PSS"         = ~ PSS >= 14,   # ≥ medium (or ≥14 for medium stress)
+  "SIAS"        = ~ SIAS >= 36,
+  "STAI.trait"  = ~ STAI.trait >= 44
+)
+# for each survey, set that participant survey score to NA if below cutoff
+corrdata_cutoff <- corrdata
+for (v in names(cutoff_rules)) {
+  expr <- cutoff_rules[[v]][[2]] # Extract the RHS of the formula (e.g. AQ10 >= 6)
+  keep <- eval(expr, envir = corrdata_cutoff)  # Evaluate in the corrdata_cutoff environment
+  keep[is.na(keep)] <- FALSE # Treat NA as not meeting cutoff
+  corrdata_cutoff[[v]][!keep] <- NA # Mask values below cutoff
+}
+
+# check how many remain per survey?
+sapply(names(cutoff_rules), function(v) sum(!is.na(corrdata_cutoff[[v]])))
+
+cormatrix_full(corrdata_cutoff, "Psych Sum Scores (>Cut-Offs)", "Intero & Psych Correlations", "~/Git/InteroMentalHealth/figures/Intero_correlations/Psychsumscores_correlations/corr_PsychsumscoresCutOffs_Intero_full_asrsabinary.png")
+
+
+# Mann-Whitney U tests - below & above cut-off
+intero_vars <- c(
+  "RRST Conf", "RRST Slope", "RRST Thresh", "RRST MRatio",
+  "HRDT Conf", "HRDT Slope", "HRDT Thresh", "HRDT MRatio"
+)
+
+
+
+
+library(rlang)
+
+wilcox_results <- map_df(names(cutoff_rules), function(symptom) {
+
+  rule <- cutoff_rules[[symptom]][[2]]
+
+  corrdata %>%
+    mutate(group = rlang::eval_tidy(rule, data = cur_data())) %>%
+    filter(!is.na(group)) %>%
+    pivot_longer(all_of(intero_vars), names_to = "intero", values_to = "value") %>%
+    group_by(intero) %>%
+    summarise(
+      symptom = symptom,
+      n_high = sum(group & !is.na(value)),
+      n_low  = sum(!group & !is.na(value)),
+      p = ifelse(
+        n_high > 0 & n_low > 0,
+        wilcox.test(value ~ group, exact = FALSE)$p.value,
+        NA_real_
+      ),
+      .groups = "drop"
+    )
+})
+
+
+```
+# Save results as table
+```{r}
+library(dplyr)
+library(purrr)
+library(tidyr)
+library(rlang)
+
+wilcox_results <- map_df(names(cutoff_rules), function(symptom) {
+
+  rule <- cutoff_rules[[symptom]][[2]]
+
+  corrdata %>%
+    mutate(group = rlang::eval_tidy(rule, data = cur_data())) %>%
+    filter(!is.na(group)) %>%
+    pivot_longer(all_of(intero_vars), names_to = "intero", values_to = "value") %>%
+    group_by(intero) %>%
+    summarise(
+      symptom = symptom,
+
+      n_high = sum(group & !is.na(value)),
+      n_low  = sum(!group & !is.na(value)),
+
+      med_high = median(value[group], na.rm = TRUE),
+      iqr_high = IQR(value[group], na.rm = TRUE),
+      med_low  = median(value[!group], na.rm = TRUE),
+      iqr_low  = IQR(value[!group], na.rm = TRUE),
+
+      test = list(
+        if (n_high > 0 & n_low > 0)
+          wilcox.test(value ~ group, exact = FALSE)
+        else NULL
+      ),
+
+      W = ifelse(!is.null(test[[1]]),
+                 unname(test[[1]]$statistic),
+                 NA_real_),
+
+      p = ifelse(!is.null(test[[1]]),
+                 test[[1]]$p.value,
+                 NA_real_),
+
+      r_rb = ifelse(
+        !is.null(test[[1]]),
+        (2 * unname(test[[1]]$statistic)) / (n_high * n_low) - 1,
+        NA_real_
+      ),
+
+      .groups = "drop"
+    )
+})
+
+# FDR correction (within symptom)
+wilcox_results <- wilcox_results %>%
+  group_by(symptom) %>%
+  mutate(p_fdr = p.adjust(p, method = "fdr")) %>%
+  ungroup()
+
+apa_table <- wilcox_results %>%
+  mutate(
+    `Above cutoff: Median (IQR)` = sprintf("%.2f (%.2f)", med_high, iqr_high),
+    `Below cutoff: Median (IQR)` = sprintf("%.2f (%.2f)", med_low,  iqr_low),
+    W = round(W, 1),
+    r_rb = round(r_rb, 2),
+    p = signif(p, 3),
+    p_fdr = signif(p_fdr, 3)
+  ) %>%
+  dplyr::select(
+    Symptom = symptom,
+    Interoceptive = intero,
+    n_high, n_low,
+    `Above cutoff: Median (IQR)`,
+    `Below cutoff: Median (IQR)`,
+    W,
+    `r (rank-biserial)` = r_rb,
+    p,
+    `p (FDR)` = p_fdr
+  )
+
+
+write.csv(
+  apa_table,
+  "~/Git/InteroMentalHealth/figures/Intero_correlations/Psychsumscores_correlations/Wilcoxon_Intero_PsychCutoff_APA.csv",
+  row.names = FALSE
+)
+
+
+```
+
+# Table with Bayes
+```{r}
+library(dplyr)
+library(purrr)
+library(tidyr)
+library(rlang)
+library(BayesFactor)
+
+wilcox_results <- map_df(names(cutoff_rules), function(symptom) {
+
+  rule <- cutoff_rules[[symptom]][[2]]
+
+  corrdata %>%
+    mutate(group = rlang::eval_tidy(rule, data = cur_data())) %>%
+    filter(!is.na(group)) %>%
+    pivot_longer(all_of(intero_vars), names_to = "intero", values_to = "value") %>%
+    group_by(intero) %>%
+    summarise(
+      symptom = symptom,
+      n_high = sum(group & !is.na(value)),
+      n_low  = sum(!group & !is.na(value)),
+      med_high = median(value[group], na.rm = TRUE),
+      iqr_high = IQR(value[group], na.rm = TRUE),
+      med_low  = median(value[!group], na.rm = TRUE),
+      iqr_low  = IQR(value[!group], na.rm = TRUE),
+
+      test = list(if (n_high > 0 & n_low > 0) wilcox.test(value ~ group, exact = FALSE) else NULL),
+      W = ifelse(!is.null(test[[1]]), unname(test[[1]]$statistic), NA_real_),
+      p = ifelse(!is.null(test[[1]]), test[[1]]$p.value, NA_real_),
+
+      r_rb = ifelse(!is.null(test[[1]]),
+                    (2 * unname(test[[1]]$statistic)) / (n_high * n_low) - 1,
+                    NA_real_),
+
+      bf01 = {
+        x1 <- value[group]; x0 <- value[!group]
+        x1 <- x1[is.finite(x1)]; x0 <- x0[is.finite(x0)]
+        if (length(x1) > 1 && length(x0) > 1) {
+          bf10 <- BayesFactor::extractBF(BayesFactor::ttestBF(x = x1, y = x0))$bf[1]
+          1 / bf10
+        } else NA_real_
+      },
+
+      .groups = "drop"
+    )
+})
+
+wilcox_results <- wilcox_results %>%
+  group_by(symptom) %>%
+  mutate(p_fdr = p.adjust(p, method = "fdr")) %>%
+  ungroup()
+
+apa_table <- wilcox_results %>%
+  mutate(
+    `Above cutoff: Median (IQR)` = sprintf("%.2f (%.2f)", med_high, iqr_high),
+    `Below cutoff: Median (IQR)` = sprintf("%.2f (%.2f)", med_low,  iqr_low),
+    W = round(W, 1),
+    r_rb = round(r_rb, 2),
+    p = signif(p, 3),
+    p_fdr = signif(p_fdr, 3),
+    bf01 = signif(bf01, 3)
+  ) %>%
+  dplyr::select(
+    Symptom = symptom,
+    Interoceptive = intero,
+    n_high, n_low,
+    `Above cutoff: Median (IQR)`,
+    `Below cutoff: Median (IQR)`,
+    W,
+    `r (rank-biserial)` = r_rb,
+    p,
+    `p (FDR)` = p_fdr,
+    `BF01 (null)` = bf01
+  )
+
+write.csv(
+  apa_table,
+  "~/Git/InteroMentalHealth/figures/Intero_correlations/Psychsumscores_correlations/Wilcoxon_Intero_PsychCutoff_APA_Bayes.csv",
+  row.names = FALSE
+)
+
+```
+
+# Clinical cut-off boxplots
+```{r}
+library(dplyr); library(purrr); library(rlang)
+library(ggplot2); library(tidyr)
+
+cols <- list(
+  HRDT = c(Below="#F4A6A6", Above="#B22222"),
+  RRST = c(Below="#9ADBE8", Above="#1F78B4")
+)
+
+symptom_labs_nl <- c(
+  AQ10       = "Autism\n(AQ10)",
+  ASRS.A     = "ADHD\n(ASRS.A)",
+  MDI        = "Depression\n(MDI)",
+  PHQ15      = "Somatic\n(PHQ15)",
+  PHQ9       = "Depression\n(PHQ9)",
+  PSS        = "Stress\n(PSS)",
+  SIAS       = "Social anxiety\n(SIAS)",
+  STAI.trait = "Trait anxiety\n(STAI)"
+)
+
+mk_box_both <- function(vars, interolabel){
+
+  df <- imap_dfr(cutoff_rules, \(f, s)
+    corrdata |>
+      mutate(symptom = s, g = eval_tidy(f[[2]], data = cur_data())) |>
+      filter(!is.na(g)) |>
+      pivot_longer(all_of(vars), names_to="task", values_to="value") |>
+      filter(!is.na(value)) |>
+      transmute(
+        symptom,
+        task = trimws(task),
+        group = factor(if_else(g,"Above","Below"), levels=c("Below","Above")),
+        value
+      )
+  ) |>
+    mutate(task_group = interaction(task, group, sep = "_", drop = TRUE))
+
+  pal <- setNames(
+    c(cols$HRDT["Below"], cols$HRDT["Above"], cols$RRST["Below"], cols$RRST["Above"]),
+    c(paste0(vars[1], "_Below"), paste0(vars[1], "_Above"),
+      paste0(vars[2], "_Below"), paste0(vars[2], "_Above"))
+  )
+
+  task_labs <- c(
+    setNames(paste0("Cardiac\n(", vars[1], ")"), vars[1]), # "Cardiac\n(HRDT Absolute Thresh)", vars[1]), #
+    setNames(paste0("Respiratory\n(", vars[2], ")"), vars[2])
+  )
+
+  ggplot(df, aes(group, value, fill=task_group, colour=task_group)) +
+    geom_boxplot(width=.45, outlier.shape=NA, alpha=.55) +
+    geom_point(position=position_jitter(width=.10, height=.02),
+               alpha=.25, size=1.1) +
+    facet_grid(
+      task ~ symptom, scales="free_y", switch="y",
+      labeller = labeller(task = task_labs, symptom = symptom_labs_nl)
+    ) +
+    scale_fill_manual(values = pal) +
+    scale_colour_manual(values = pal) +
+    labs(y = interolabel, x = "Clinical cut-off group") +
+    theme_classic(base_size=17) +
+    theme(
+      legend.position="none",
+      strip.background = element_blank(),
+      strip.placement = "outside",
+      strip.text.y.left = element_text(face="bold", size=14),
+      strip.text.x = element_text(face="bold", size=13)
+    )
+}
+
+p_thresh <- mk_box_both(c("HRDT Thresh", "RRST Thresh"), "Interoceptive sensitivity")
+ggsave("~/Git/InteroMentalHealth/figures/Intero_correlations/Psychsumscores_correlations/HRDT_RRST_thresh_boxplots.png",
+       p_thresh, width=14, height=9, units="in", dpi=300)
+
+p_slope <- mk_box_both(c("HRDT Slope", "RRST Slope"), "Interoceptive precision")
+ggsave("~/Git/InteroMentalHealth/figures/Intero_correlations/Psychsumscores_correlations/HRDT_RRST_slope_boxplots.png",
+       p_slope, width = 14, height = 9, units = "in", dpi = 300)
+
+p_conf <- mk_box_both(c("HRDT Conf", "RRST Conf"), "Interoceptive confidence")
+ggsave("~/Git/InteroMentalHealth/figures/Intero_correlations/Psychsumscores_correlations/HRDT_RRST_conf_boxplots.png",
+       p_conf, width = 14, height = 9, units = "in", dpi = 300)
+
+p_mratio <- mk_box_both(c("HRDT MRatio", "RRST MRatio"), "Interoceptive metacognition")
+ggsave("~/Git/InteroMentalHealth/figures/Intero_correlations/Psychsumscores_correlations/HRDT_RRST_mratio_boxplots.png",
+       p_mratio, width = 14, height = 9, units = "in", dpi = 300)
+
+```
+
+# quantile correlation analysis
+```{r}
+quantile_rules <- list(
+  "AQ10"        = ~ AQ10 >= quantile(AQ10, 0.75, na.rm = TRUE),
+  "ASRS.A"      = ~ ASRS.A >= quantile(ASRS.A, 0.75, na.rm = TRUE), # only 1-4
+  "MDI"         = ~ MDI >= quantile(MDI, 0.75, na.rm = TRUE),
+  "PHQ9"        = ~ PHQ9 >= quantile(PHQ9, 0.75, na.rm = TRUE),
+  "PHQ15"       = ~ PHQ15 >= quantile(PHQ15, 0.75, na.rm = TRUE),
+  "PSS"         = ~ PSS >= quantile(PSS, 0.75, na.rm = TRUE),
+  "SIAS"        = ~ SIAS >= quantile(SIAS, 0.75, na.rm = TRUE),
+  "STAI.trait"  = ~ STAI.trait >= quantile(STAI.trait, 0.75, na.rm = TRUE)
+)
+
+corrdata_quantile <- corrdata
+
+for (v in names(quantile_rules)) {
+  expr <- quantile_rules[[v]][[2]]
+  keep <- eval(expr, envir = corrdata_quantile)
+  keep[is.na(keep)] <- FALSE
+  corrdata_quantile[[v]][!keep] <- NA
+}
+
+# sanity check
+sapply(names(quantile_rules), function(v)
+  sum(!is.na(corrdata_quantile[[v]]))
+)
+
+cormatrix_full(
+  corrdata_quantile,
+  "Psych Sum Scores (Top Quartile)",
+  "Intero & Psych Correlations",
+  "~/Git/InteroMentalHealth/figures/Intero_correlations/Psychsumscores_correlations/corr_PsychsumscoresQuantile75_Intero_full.png"
+)
+
+# all quartiles
+quantiles <- c(0.5, 0.75, 0.9)
+vars <- names(cutoff_rules)  # the psych vars you want to threshold (AQ10, ASRS.A, ...)
+
+for (q in quantiles) {
+
+  corrdata_q <- corrdata
+
+  for (v in vars) {
+
+    x <- corrdata_q[[v]]
+
+    # If variable missing or all NA, skip gracefully
+    if (is.null(x) || all(is.na(x))) next
+
+    thr <- as.numeric(stats::quantile(x, probs = q, na.rm = TRUE, type = 7))
+
+    keep <- !is.na(x) & (x >= thr)
+    corrdata_q[[v]][!keep] <- NA
+  }
+
+  cormatrix_full(
+    corrdata_q,
+    paste0("Psych Sum Scores (Top ", q * 100, "%)"),
+    "Intero & Psych Correlations",
+    paste0(
+      "~/Git/InteroMentalHealth/figures/Intero_correlations/",
+      "Psychsumscores_correlations/corr_PsychsumscoresQuantile",
+      q * 100, "_Intero_full.png"
+    )
+  )
+}
+
+
+# check N in each percentile
+# quantiles <- c(0.5, 0.75, 0.9)
+# vars <- names(cutoff_rules)
+# intero_idx <- 1:8
+# 
+# for (q in quantiles) {
+# 
+#   corrdata_q <- corrdata
+# 
+#   # threshold symptom variables
+#   for (v in vars) {
+#     x <- corrdata_q[[v]]
+#     if (is.null(x) || all(is.na(x))) next
+#     thr <- quantile(x, probs = q, na.rm = TRUE)
+#     corrdata_q[[v]][!( !is.na(x) & x >= thr )] <- NA
+#   }
+# 
+#   psych_idx <- match(vars, names(corrdata_q))
+#   M <- !is.na(as.matrix(corrdata_q))
+# 
+#   n_ip <- t(M[, intero_idx, drop = FALSE]) %*% M[, psych_idx, drop = FALSE]
+#   n_vals <- as.vector(n_ip)
+# 
+#   cat("\n=== Top", q * 100, "% (intero × symptom) ===\n")
+#   cat("Pairwise N range:", range(n_vals), "\n")
+#   print(summary(n_vals))
+#   cat("Zero-overlap pairs:", sum(n_vals == 0), "\n")
+# }
+
+
+```
+
+
+

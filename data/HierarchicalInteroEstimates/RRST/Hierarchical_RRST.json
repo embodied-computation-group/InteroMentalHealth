@@ -1,0 +1,83 @@
+{
+    "participant_id": {
+        "LongName": "Participant ID in BIDS format",
+        "Description": "Participant specific identification number (sub, sub_id) in BIDS format, e.g.: sub-0001"
+    },
+    "id": {
+        "LongName": "Numeric participant ID",
+        "Description": "numeric variant of the participant specific identification number"
+    },
+    "task": {
+        "LongName": "task identicator",
+        "Description": "string that indicates the task the individual trial belongs to"
+    },
+    "cohort": {
+        "LongName": "which vmp cohort does the data belong to",
+        "Description": "Indicates whether the data in the current row was acquired during vmp1 or vmp 2",
+        "Levels": {
+            "vmp1": "VMP 1",
+            "vmp2": "VMP 2"
+        }
+    },
+    "subject": {
+        "LongName": "Numeric identifier",
+        "Description": "Numeric identifier used in the Stan models(1 through 291)"
+    },
+    "mean_confidence": {
+        "LongName": "overall confidence (mean)",
+        "Description": "Confidence level (mean) - 0 to 100"
+    },
+    "sd_confidence": {
+        "LongName": "standard deviation confidence",
+        "Description": "Confidence level (standard deviation)"
+    },
+    "mean_RT": {
+        "LongName": "Response time (mean)",
+        "Description": "Response time (mean) for the firt level decision"
+    },
+    "sd_RT": {
+        "LongName": "Response time (standard deviation) ",
+        "Description": "Response time (standard deviation) for the firt level decision"
+    },
+    "Accuracy": {
+        "LongName": "Accuracy",
+        "Description": "Procentage of correct responses. "
+    },
+    "estimated_mean_beta": {
+        "LongName": "Estimated mean of the slope",
+        "Description": "Estimated mean of the slope for the particular subject. These are the standard deviations of the cummulative weibull."
+    },
+    "estimated_mean_lapse": {
+        "LongName": "Estimated mean of the lapse rate",
+        "Description": "Estimated mean of the lapse rate for the particular subject. These control the tails of the psychometric function and were it asympotes to when Stimlvl -> -Inf & Inf"
+    },
+    "estimated_mean_alpha": {
+        "LongName": "Estimated mean of the threshold",
+        "Description": "Estimated mean of the threshold for the particular subject."
+    },
+    "estimated_q5_beta": {
+        "LongName": "Estimated 5% percentile of the posteror distribution of the slope",
+        "Description": "Estimated 5% percentile of the posteror distribution of the slope for the particular subject. These are the standard deviations of the cummulative weibull."
+    },
+    "estimated_q5_lapse": {
+        "LongName": "Estimated 5% percentile of the posteror distribution of the lapse rate",
+        "Description": "Estimated 5% percentile of the posteror distribution of the lapse rate for the particular subject. These control the tails of the psychometric function and were it asympotes to when Stimlvl -> -Inf & Inf"
+    },
+    "estimated_q5_alpha": {
+        "LongName": "Estimated 5% percentile of the posteror distribution of the threshold",
+        "Description": "Estimated 5% percentile of the posteror distribution of the threshold for the particular subject."
+    },
+    "estimated_q95_beta": {
+        "LongName": "Estimated 95% percentile of the posteror distribution of the slope",
+        "Description": "Estimated 95% percentile of the posteror distribution of the slope for the particular subject. These are the standard deviations of the cummulative weibull."
+    },
+    "estimated_q95_lapse": {
+        "LongName": "Estimated 95% percentile of the posteror distribution of the lapse rate",
+        "Description": "Estimated 95% percentile of the posteror distribution of the lapse rate for the particular subject. These control the tails of the psychometric function and were it asympotes to when Stimlvl -> -Inf & Inf."
+
+    },
+    "estimated_q95_alpha": {
+        "LongName": "Estimated 95% percentile of the posteror distribution of the threshold",
+        "Description": "Estimated 95% percentile of the posteror distribution of the threshold for the particular subject."
+    }
+}

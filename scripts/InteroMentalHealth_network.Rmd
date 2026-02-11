@@ -1,0 +1,689 @@
+---
+title: "InteroMentalHealth"
+output: html_document
+date: '2022-06-21'
+---
+
+# Load packages 
+```{r}
+# clean slate to be sure
+rm(list = ls())
+
+# check for pacman package and install if not found
+if (!require("pacman")) install.packages("pacman")
+  pacman::p_load(tidyverse, here, corrplot, ggcorrplot, heatmap3, patchwork, cowplot, ggpubr, R.matlab, dplyr, BayesFactor,RColorBrewer, psych, ppcor, reshape2, readr) 
+  
+
+allsurveys <- read_csv("~/Git/InteroMentalHealth/data/allsurveys.csv")[ ,9:286] #remove  beginning cols for EFA
+allsurveys <- allsurveys[, !(names(allsurveys) %in% c("phq_9_10", "phq15_4", "whoqol_4"))] # items with excessive NaNs than usual
+
+# Select the following survey data - Autism, ADHD, Depression, Somatic Symptoms, Stress, Social Anxiety, Trait Anxiety (improves item-subject ratio)
+selected_surveys <- allsurveys %>%
+  dplyr::select(starts_with("aq10"), starts_with("asrs"), starts_with("mdi"),
+                starts_with("phq"), starts_with("pss"), starts_with("sias"),
+                starts_with("stai"))
+
+sub_id <- read_tsv('/mnt/raid0/scratch/BIDS/phenotype/demographics/demographics.tsv')$participant_id # participant_id 
+selected_surveys <- cbind(sub_id, selected_surveys)
+
+selected_surveys <- na.omit(selected_surveys)
+
+# Load the text details of each item included
+surveyitems <- read_csv('~/Git/InteroMentalHealth/data/SurveyItems.csv') #
+surveyitems <- surveyitems %>% filter(!Item %in% c("phq_9_10", "phq15_4", "whoqol_4"))# items with excessive NaNs than usual 
+prefixes <- paste0("^(", paste(c("aq10", "asrs", "mdi", "phq", "pss", "sias", "stai"), collapse = "|"), ")") 
+selected_surveyitems <- surveyitems %>%
+  filter(grepl(prefixes, Item)) # Filter the surveyitems based on the prefixes
+
+rm(allsurveys, surveyitems, prefixes) # tidy
+
+
+# Detect multivariate outliers via Mahalanobis Distance 
+distances <- mahalanobis(x = selected_surveys[ ,2:ncol(selected_surveys)], center = colMeans(selected_surveys[ ,2:ncol(selected_surveys)]), cov = cov(selected_surveys[ ,2:ncol(selected_surveys)]))
+cutoff <- qchisq(p = 1 - 0.001, df = ncol(selected_surveys[ ,2:ncol(selected_surveys)])) # Cutoff value for ditances from Chi-Sqaure Dist. 
+outliers <- distances > cutoff ## Display observation whose distance greater than cutoff value
+# Remove outliers from the dataframe
+selected_surveys <- selected_surveys[!outliers, ] # 47 multivariate outliers
+
+# save sub_id's 
+#write.csv(selected_surveys$sub_id, "~/Git/InteroMentalHealth/data/SubIDs_PsychEFA.csv", row.names = FALSE)
+selected_surveys <- selected_surveys[ ,-c(1)]
+
+```
+
+# Network analysis
+```{r}
+library("bootnet")
+library("ggplot2")
+library("qgraph")
+
+# Network Estimation: estimate a Gaussian graphical model, using the graphical LASSO in combination with EBIC model selection
+# This procedure requires an estimate of the variance-covariance matrix and returns a parsimonious network of partial correlation coefficients.
+Network <- estimateNetwork(selected_surveys, default = "EBICglasso")
+plot(Network, layout = "spring")
+
+```
+
+
+```{r}
+library(igraph)
+#-----------------------------#
+##### COMMUNITY DETECTION #####
+#-----------------------------#
+
+#spin-glass algorithm for community detection ----#
+matrix<- graph.adjacency(Network$graph, mode="upper", diag=FALSE, weighted=TRUE)
+set.seed(123)
+
+community_OKI <- spinglass.community(matrix, weights=NULL, vertex=NULL, spins=21, parupdate=FALSE, start.temp=1, stop.temp=0.01, cool.fact=0.99, update.rule="simple", gamma=1, implementation="neg",gamma.minus=1)
+
+
+#given the presence of negative edges in the glasso, we used the "neg"
+#implementation the gamma and gamma.minus were set at 1 to makes existing and
+#non-existing links equally important the number of spins was set to 21 (much higher than number of communities detected)
+
+community_OKI
+community_OKI$membership
+community_OKI$csize
+
+# Create a color palette based on the unique values in the community membership
+unique_communities <- unique(community_OKI$membership)
+
+color_palette <- c("khaki1", "lightsalmon", "aquamarine", "mistyrose", "lightblue1", "darkseagreen1", "slategray2", "plum3", "lavender")   
+community_colors <- color_palette[match(community_OKI$membership, unique_communities)]
+
+
+png(filename = "~/Git/InteroMentalHealth/figures/Network/network_plot_rest_communities.png", res = 300, height = 15, width = 20, units = "cm") #
+plot(Network, layout = "spring",groups=community_OKI$membership, color = community_colors, posCol= 'brown2', negCol = 'royalblue2')
+dev.off()
+
+
+# Define labels for community detection
+names_comm <- c("Self/Social Confidence","Restlessness","Attention Dysregulation","Mentalising","Impulsivity","Depressive Symptoms","Somatic Symptoms","Stress Reactivity","Social Anxiety")
+plot(Network, layout = "spring",groups=community_OKI$membership, color = community_colors, posCol= 'brown2', negCol = 'royalblue2')
+legend("topright", legend = names_comm, col = color_palette, pch = 16)
+
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+
+stopifnot(nrow(selected_surveyitems) == length(community_OKI$membership))
+
+comm_tbl <- tibble(
+  Item = selected_surveyitems$Item,
+  Community = as.integer(community_OKI$membership)
+) %>%
+  left_join(selected_surveyitems, by = "Item") %>%
+  arrange(Community, Item)
+
+## save table
+library(dplyr)
+library(tidyr)
+library(officer)
+
+# build community table 
+stopifnot(nrow(selected_surveyitems) == length(community_OKI$membership))
+
+comm_tbl <- tibble(
+  Item = selected_surveyitems$Item,
+  Community = as.integer(community_OKI$membership)
+) %>%
+  left_join(selected_surveyitems, by = "Item") %>%
+  arrange(Community, Item)
+
+# table to export 
+tab <- comm_tbl %>%
+  select(Community, Item, Question) %>%
+  arrange(Community, Item)
+
+# write Word doc ´
+doc <- read_docx() %>%
+  body_add_par("Table 1", style = "Normal") %>%
+  body_add_par("Community membership of survey items", style = "Normal") %>%
+  body_add_table(tab) %>%  
+  body_add_par("Note. Communities were identified using the spin-glass community detection algorithm.", style = "Normal")
+
+print(
+  doc,
+  target = "/figures/Network/community_membership_table.docx"
+)
+
+```
+
+```{r}
+# Community mean scores (reverse-code via a key) 
+# selected_surveys: participant x item dataframe (cols = item IDs)
+
+item_names <- names(community_OKI$membership)
+if (is.null(item_names)) item_names <- colnames(selected_surveys)
+stopifnot(length(item_names) == length(community_OKI$membership))
+
+comm_map <- split(item_names, as.integer(community_OKI$membership))
+
+# items to reverse so higher always = "more of the construct"
+reverse_items <- c("aq10_10", "aq10_7", "aq10_2", "aq10_3", "aq10_4", "aq10_8")
+
+# reverse-code (works for 0–3, 1–4, 1–5, etc. by using each item’s observed min/max)
+for (it in intersect(reverse_items, colnames(selected_surveys))) {
+  x <- selected_surveys[[it]]
+  selected_surveys[[it]] <- (min(x, na.rm=TRUE) + max(x, na.rm=TRUE)) - x
+}
+
+# participant community averages
+community_scores <- as.data.frame(
+  sapply(names(comm_map), \(k) rowMeans(selected_surveys[, comm_map[[k]], drop=FALSE], na.rm=TRUE))
+)
+
+# rename columns with labels 
+colnames(community_scores) <- c(
+  "SelfSocial_Confidence","Restlessness","Attention_DysReg","Mentalising",
+  "Impulsivity","Depressive_Symptoms","Somatic_Symptoms","Stress_Reactivity","Social_Anxiety"
+)
+
+write.csv(community_scores,
+          "/figures/Network/community_scores.csv",
+          row.names = FALSE)
+
+```
+
+
+
+# Read merged data of intero & mental health (& preprocess intero)
+```{r}
+alldata <- read_csv(here::here("data", "alldata.csv"))
+#colSums(!is.na(alldata)) # - 513 HRDT, 267 RRST
+
+# preprocess slope & M-Ratio for intero tasks
+
+# Invert scale of hrd/extero slope (so higher = steeper slope (same as RRST)) (for both intero & extero)
+alldata[ ,'HRD_slope'] <- -(alldata[ ,'HRD_slope'])
+alldata[ ,'HRDextero_slope'] <- -(alldata[ ,'HRDextero_slope'])
+
+
+# M-Ratio: Replace negative M-Ratio values with NA 
+cols_to_modify <- c("mratio_hrd", "mratio_rrst", "mratio_extero")
+alldata[cols_to_modify] <- lapply(alldata[cols_to_modify], function(x) ifelse(x < 0, NA, x))
+
+# M-Ratio: remove high outliers from M-Ratio (MAD-based outlier removal to selected columns) 
+alldata[cols_to_modify] <- lapply(alldata[cols_to_modify], function(x) {
+  median_x <- median(x, na.rm = TRUE)
+  mad_x <- mad(x, na.rm = TRUE)
+  x[abs(x - median_x) > 3 * mad_x] <- NA
+  return(x) 
+})
+
+```
+
+
+# merge intero & psych communities
+```{r}
+colnames(alldata) <- gsub("_", ".", colnames(alldata))
+# attach subids to community scores
+subids <- read_csv(here::here("data/PsychEFAs","SubIDs_PsychEFA.csv"))
+community_scores$participant.id <- subids$x
+colnames(community_scores) <- gsub("_", ".", colnames(community_scores))
+
+# clean alldata names and merge by subid
+corrdata <- left_join(alldata, community_scores, by = "participant.id")
+
+```
+
+# Correlation matrix & scatterplot functions
+```{r}
+
+cormatrix_full <- function(cordata, title, subtitle, savepath) {
+  pval_fdr <- psych::corr.test(cordata, method = "spearman", adjust = "fdr")$p 
+  rval_fdr <- psych::corr.test(cordata, method = "spearman", adjust = "fdr")$r
+
+  cp1 <- ggcorrplot(rval_fdr,  hc.order=FALSE, p.mat = pval_fdr,
+             type='full',  method = "square", insig='blank', sig.level = 0.05,  
+             outline.col = "black",
+             #lab = TRUE,  # Add correlation values
+             #lab_col = "black",               # Label color
+             #lab_size = 1.5,                    # Label size
+             #digits = 2, # 2 decimal points
+             ggtheme = ggplot2::theme_minimal,
+             tl.cex = 8,
+            colors = c("#4a6fe3", "white", "#d33f6a")) + 
+    ggtitle(title) +
+    labs(subtitle = subtitle)+
+    theme(
+      axis.text.x = ggtext::element_markdown(angle = 45, hjust = 1),
+      axis.text.y = ggtext::element_markdown()
+    )
+  
+  png(filename = savepath, res = 300, units = "cm", width = 15, height = 15) 
+  print(cp1)
+  dev.off()
+}
+
+
+cormatrix_selected <- function(cordata, xlabel, ylabel, xnum, ynum, savepath) {
+  # Correlation plots
+  cormatrix <- t(psych::corr.test(cordata, method = "spearman", adjust = "fdr")$r[1:xnum, (xnum+1):(xnum+ynum)]) 
+  cor_pvals <- t(psych::corr.test(cordata, method = "spearman", adjust = "fdr")$p[1:xnum, (xnum+1):(xnum+ynum)])
+  png(filename = savepath, res = 300, height = ((ynum*3)+2), width = ((xnum*3)+2), units = "cm") # width for factors
+  # Plot the correlation matrix with significance markers
+  corrplot::corrplot(cormatrix,
+                     method = "color",
+                     addCoef.col = 'black',
+                     cl.pos = 'n',
+                     col.lim = c(min(cormatrix), max(cormatrix)),
+                     tl.col = "black",
+                     col = colorRampPalette(c("#4a6fe3", "white", "#d33f6a"))(100),  #c("blue", "white", "red"))(100)
+                     p.mat = cor_pvals,
+                     sig.level = 0.05,
+                     insig="blank",
+                     mar = c(0, 0, 1.75, 0)
+                     )$corrPos -> p1
+  #text(p1$x, p1$y, round(p1$corr, 2))
+  
+  # Draw a rectangle around the entire correlation matrix
+  rect(0.5, 0.5, ncol(cormatrix) + 0.5, nrow(cormatrix) + 0.5, border = "black", lwd = 2)
+  dev.off()
+}
+
+
+# Bayesian corplot: Function to compute a matrix of Bayes Factors for all pairwise correlations
+bayes_factor_matrix <- function(data, bayes_factor, savepath) { # , rscale = "medium" - medium is default for width of prior
+  # make empty matrix to fill
+  bayes_matrix <- matrix(NA, nrow = ncol(data), ncol = ncol(data))
+  colnames(bayes_matrix) <- colnames(data)
+  rownames(bayes_matrix) <- colnames(data)
+
+  # estimate bayes factors and fill matrix
+  for (i in 1:(ncol(data) - 1)) {
+    for (j in (i + 1):ncol(data)) {
+      
+      # first for this correlation data pair remove NAs
+      pair_data <- data[, c(i, j)][complete.cases(data[, c(i, j)]), ]
+      # estimate bayes factors and fill matrix
+      bf <- correlationBF(pair_data[[1]], pair_data[[2]]) #, rscale = rscale
+      bf_10 <- extractBF(bf)$bf  # BF10
+      if (bayes_factor == 'alternative') {
+        bayes_matrix[i, j] <- as.numeric(bf_10)
+        bayes_matrix[j, i] <- as.numeric(bf_10) 
+      }
+      else if (bayes_factor == 'null') {
+        bf_01     <- 1 / bf_10 # BF01 
+        bayes_matrix[i, j] <- bf_01
+        bayes_matrix[j, i] <- bf_01
+      }
+    }
+  }
+  diag(bayes_matrix) <- NA # Diagonal is not applicable
+  # Mask the lower triangle
+  #bayes_matrix[lower.tri(bayes_matrix)] <- NA
+
+  colourpalette <- colorRampPalette(brewer.pal(9, "PuBu"))
+  
+  cp1 <- ggcorrplot(bayes_matrix, hc.order = FALSE, method = "square", 
+  #lab= TRUE, # labels
+  #lab_size = 1,
+  #digits = 2,
+  type = 'lower',
+  outline.col = "black",
+  ggtheme = ggplot2::theme_minimal,
+  tl.cex = 6,
+  ) +
+  scale_fill_gradientn(
+    colors = c("#f3e8ff", colourpalette(100)),
+    #colors = colourpalette <- colourpalette(100),
+    values = scales::rescale(c(0, 1, max(bayes_matrix, na.rm = TRUE))),
+    #limits = c(0, max(bayes_matrix+1, na.rm = TRUE)), 
+    name = "Bayes Factor 01",
+    na.value = "lightgrey"  # Set a custom color for NA values
+  ) +
+  scale_y_discrete(position='right') +
+  theme(
+  plot.title = element_blank(),        # Remove the main title
+  plot.subtitle = element_blank(),     # Remove subtitle
+  axis.title.x = element_blank(),      # Remove x-axis title
+  axis.title.y = element_blank(),      # Remove y-axis title
+  panel.grid.major = element_blank(),  # Remove major grid lines
+  panel.grid.minor = element_blank(),   # Remove minor grid lines
+  plot.margin = unit(c(2, 2, 2, 2), "cm"),
+  axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 6), #
+  axis.text.y = element_text(size = 6)
+  )
+  
+  png(filename = savepath, res = 300, units = "cm", width = 16, height = 15) 
+  print(cp1)
+  dev.off()
+  #return(bayes_matrix)
+}
+
+
+scatterplot_gg <- function(cdat, yvar, xvar, colour) {
+  
+  corrdata <- data.frame(apply(cdat, 2, rank))
+  pval_fdr <- psych::corr.test(cdat, method = "spearman", adjust = "fdr")$p
+  rval_fdr <- psych::corr.test(cdat, method = "spearman", adjust = "fdr")$r
+
+    if (pval_fdr[xvar,yvar] < 0.001) {
+      pval = '<.001'
+    } else {
+      pval = round(pval_fdr[xvar,yvar], 3)
+    }
+  
+  # Remove rows with missing values in xvar or yvar before plotting
+  cdat <- cdat[!is.na(cdat[[xvar]]) & !is.na(cdat[[yvar]]), ]
+
+  ggplot(cdat, aes(y= !! sym(yvar), x= !! sym(xvar))) + 
+    geom_point(color=colour, alpha=0.5, size = 3) +
+    geom_smooth(method=lm , color="#909086", fill="#5d9fcc" , se=TRUE) +
+    theme_classic() +
+    ggtitle(paste("rs =", round(rval_fdr[xvar,yvar], 3), ", pFDR =", pval))+ 
+    theme(plot.title = element_text(size = 19, face = "bold"), 
+          axis.title = element_text(size = 20), 
+          axis.text = element_text(size = 20),
+          axis.title.x = element_text(margin = margin(t = 10)), # Add space above x-axis label
+          axis.title.y = element_text(margin = margin(r = 10))  # Add space to the right of y-axis label)
+    )
+}
+
+# partial correlation function
+cormatrix_partial <- function(cordata, covariates, title, subtitle, savepath) {
+  # Identify the variables of interest
+  vars_of_interest <- setdiff(names(cordata), covariates)
+  
+  # Initialize matrices for correlations and p-values
+  n_vars <- length(vars_of_interest)
+  r_matrix <- matrix(NA, n_vars, n_vars, dimnames = list(vars_of_interest, vars_of_interest))
+  p_matrix <- matrix(NA, n_vars, n_vars, dimnames = list(vars_of_interest, vars_of_interest))
+  
+  # Loop through variable pairs to compute pairwise correlations and p-values
+  for (i in seq_along(vars_of_interest)) {
+    for (j in seq_along(vars_of_interest)) {
+      if (i != j) {
+        # Subset data for the two variables and covariates
+        pair_data <- cordata[, c(vars_of_interest[i], vars_of_interest[j], covariates)]
+        pair_data <- pair_data[complete.cases(pair_data), ] # remove missing data for this pair
+        
+        # Ensure enough rows for computation
+        if (nrow(pair_data) > length(covariates) + 2) {
+          # Compute partial correlation
+          result <- pcor.test(pair_data[ ,vars_of_interest[i]], pair_data[ ,vars_of_interest[j]], pair_data[ ,covariates], method = "spearman")
+          r_matrix[i, j] <- result$estimate
+          p_matrix[i, j] <- result$p.value
+          
+        }
+      }
+    }
+  }
+  
+  # Generate the plot
+  cp1 <- ggcorrplot(r_matrix, p.mat = p_matrix, hc.order = FALSE,
+                    type = 'lower', insig = 'blank', method = "square", 
+                    sig.level = 0.05, outline.col = "black",
+                    ggtheme = ggplot2::theme_minimal(),
+                    tl.cex = 8,
+                    colors = c("#4a6fe3", "white", "#d33f6a")) + #c("#6D9EC1", "white", "#EA5F21FF")) +
+    geom_hline(yintercept = n_vars + 0.5, linetype = 3, size = 1) +
+    geom_vline(xintercept = 0.5, linetype = 3, size = 1) +
+    geom_abline(intercept = 0, slope = 1, linetype = 3, size = 1) +
+    ggtitle(title) +
+    labs(subtitle = subtitle)
+  
+  # Save the plot
+  png(filename = savepath, res = 300, units = "cm", width = 15, height = 15) 
+  print(cp1)
+  dev.off()
+  
+  # Return correlation and p-value matrices
+  return(list(cor_matrix = r_matrix, p_matrix = p_matrix))
+}
+
+
+```
+
+
+# Psych community score correlations
+```{r}
+
+colnames(alldata) <- gsub("_", ".", colnames(alldata)) # change _ to . in colnames
+cols = c("RRST.conf", "RRST.slope", "RRST.thresh", "mratio.rrst", "HRD.conf", "HRD.slope", "HRD.absthresh", "mratio.hrd", 'maia.notice', 'maia.ndistract', 'maia.nworry', 'maia.attnReg', 'maia.EmoAware', 'maia.SelfRef', 'maia.listen', 'maia.trust', "SelfSocial.Confidence", "Restlessness", "Attention.DysReg", "Mentalising", "Impulsivity", "Depressive.Symptoms", "Somatic.Symptoms", "Stress.Reactivity", "Social.Anxiety")
+corrdata <- corrdata[ ,cols]#[complete.cases(alldata[, cols]),] # select cols 
+colnames(corrdata) <- c("RRST Conf", "RRST Slope", "RRST Thresh", "RRST MRatio", "HRDT Conf", "HRDT Slope", "HRDT Thresh", "HRDT MRatio", 'MAIA Notice', 'MAIA NotDistract', 'MAIA NotWorry', 'MAIA AttenReg', 'MAIA EmotAware', 'MAIA SelfReg', 'MAIA Listen', 'MAIA Trust', "Self/Social Confidence", "Restlessness", "Attention DysReg", "Mentalising", "Impulsivity", "Depressive Symptoms", "Somatic Symptoms", "Stress Reactivity", "Social Anxiety") 
+
+pval_fdr <- psych::corr.test(corrdata, method = "spearman", adjust = "fdr")$p 
+rval_fdr <- psych::corr.test(corrdata, method = "spearman", adjust = "fdr")$r
+
+cormatrix_full(corrdata, "Psych Community Scores", "Intero & Psych Correlations", "/figures/Network/corr_PsychCommunities_Intero_full.png")
+
+bayes_factor_matrix(corrdata, 'null', "/figures/Network/Bayes01corr_PsychCommunities_Intero.png")
+
+```
+
+
+```{r}
+# Joint network: Psychophysics + MAIA + Mental health (EBICglasso)
+library(bootnet); library(qgraph); library(dplyr); library(tibble); library(networktools)
+
+# Z-score + estimate GGM
+X <- scale(corrdata)
+Net <- estimateNetwork(X, default = "EBICglasso", corMethod = "cor_auto") #automatic correlation selection for numerous types of data
+
+# Node blocks (by your column order)
+nodes_psy  <- colnames(corrdata)[1:8]   # RRST/HRDT
+nodes_maia <- colnames(corrdata)[9:16]  # MAIA
+nodes_mh   <- colnames(corrdata)[17:25] # MH domains
+
+grp <- factor(c(rep("Interoceptive Psychophysics", length(nodes_psy)),
+                rep("Interoceptive Sensibility",   length(nodes_maia)),
+                rep("Mental Health Symptoms",       length(nodes_mh))))
+
+# Plot
+set.seed(123)
+qgraph(Net$graph, layout="spring", groups=grp, labels=colnames(corrdata),
+       legend=TRUE, posCol="brown2", negCol="royalblue2")
+
+
+cols <- c("lightskyblue1","lightpink1","khaki1")
+node_cols <- cols[as.numeric(grp)]
+
+# shorter labels (example – adapt as you like)
+labs <- colnames(corrdata)
+labs <- gsub("RRST ", "R.", labs)
+labs <- gsub("HRDT", "H.", labs)
+labs <- gsub("MAIA", "", labs)
+labs[17:25] <- c("Confidence", "Restless", "Inattention", "Mentalising", "Impulsivity", "Depression", "Somatic", "Stress", "Social Anxiety")
+
+png("/figures/Network/JointNetwork_Intero_Psych.png",
+    3600, 3000, res=300)
+set.seed(123)
+qgraph(Net$graph, layout="spring",
+       labels = labs,
+       color = node_cols,
+       posCol="brown2", negCol="royalblue2",
+       vsize = 7,          # node size
+       label.cex = 1.2)    # <-- label size
+legend("topleft", legend=levels(grp), col=cols, pch=16,
+       bty="n", cex=1.5)   # <-- legend text size
+dev.off()
+
+
+# --- Direct edges: MH <-> (Psychophysics + MAIA)
+A <- Net$graph
+edges_mh_psy  <- A[nodes_mh, nodes_psy,  drop=FALSE]
+edges_mh_maia <- A[nodes_mh, nodes_maia, drop=FALSE]
+
+edge_tbl <- function(M, from_names, to_names){
+  w <- as.vector(M)
+  idx <- which(w != 0)
+  tibble(
+    mh = rep(from_names, times = ncol(M))[idx],
+    node = rep(to_names, each  = nrow(M))[idx],
+    weight = w[idx],
+    abs_weight = abs(w[idx])
+  ) %>% arrange(desc(abs_weight))
+}
+
+mh_psy_tbl  <- edge_tbl(edges_mh_psy,  nodes_mh, nodes_psy)  %>% mutate(type="MH–Psychophysics")
+mh_maia_tbl <- edge_tbl(edges_mh_maia, nodes_mh, nodes_maia) %>% mutate(type="MH–MAIA")
+
+bind_rows(mh_psy_tbl, mh_maia_tbl)
+
+# --- Bridge strength (cross-community connectivity)
+b  <- networktools::bridge(A, communities = as.numeric(grp))
+bs <- b[["Bridge Strength"]]
+
+tibble(node = c(nodes_psy, nodes_maia),
+       bridge_strength = bs[c(nodes_psy, nodes_maia)],
+       block = rep(c("Psychophysics","MAIA"), c(length(nodes_psy), length(nodes_maia)))) %>%
+  arrange(desc(bridge_strength))
+
+
+## edge accuracy
+library(bootnet)
+
+boot_edges <- bootnet(
+  Net,
+  nBoots = 1000,
+  type = "nonparametric"
+)
+
+plot(boot_edges, "edge", plot = "interval")
+
+bt <- boot_edges$bootTable
+W <- do.call(rbind, lapply(boot_edges$boots, function(x) x$graph[upper.tri(x$graph)]))
+
+ut <- which(upper.tri(A0), arr.ind = TRUE)
+edge_acc <- tibble(
+  edge = paste(rownames(A0)[ut[,1]],
+               colnames(A0)[ut[,2]],
+               sep = " -- "),
+  CI.lower = apply(W, 2, quantile, .025, na.rm = TRUE),
+  CI.upper = apply(W, 2, quantile, .975, na.rm = TRUE)
+) %>%
+  mutate(
+    ci_width = CI.upper - CI.lower
+  )
+
+
+# edge_acc <- tibble(
+#   edge = colnames(boot_edges$sample$graph)[col(boot_edges$sample$graph)[upper.tri(boot_edges$sample$graph)]],
+#   CI.lower = apply(W, 2, quantile, .025, na.rm=TRUE),
+#   CI.upper = apply(W, 2, quantile, .975, na.rm=TRUE)
+# ) %>% mutate(
+#   ci_width = CI.upper - CI.lower,
+#   crosses_zero = (CI.lower < 0 & CI.upper > 0)
+# )
+
+
+# strength stability
+boot_case <- bootnet(Net, nBoots=1000, type="case")
+corStability(boot_case)
+plot(boot_case, "strength")
+
+corStability(boot_case)
+
+
+# identify MH–intero edges
+mh_nodes     <- colnames(corrdata)[17:25]
+intero_nodes <- colnames(corrdata)[1:16]
+edge_names   <- apply(expand.grid(intero_nodes, mh_nodes), 1, paste, collapse=" -- ")
+
+
+
+
+# 3D array of bootstrap adjacency matrices: [node, node, boot]
+G  <- simplify2array(lapply(boot_edges$boots, \(x) x$graph))
+A0 <- boot_edges$sample$graph
+
+psy  <- 1:8;  maia <- 9:16;  mh <- 17:25
+
+block_sum <- function(r, c, label){
+  S <- G[r, c, , drop=FALSE]                 # signed bootstrap edges
+  lo <- apply(S, c(1,2), quantile, .025, na.rm=TRUE)
+  hi <- apply(S, c(1,2), quantile, .975, na.rm=TRUE)
+  tibble(
+    type = label,
+    n = length(A0[r,c]),
+    median_abs_edge = median(abs(A0[r,c]), na.rm=TRUE),
+    median_ci_width = median(hi - lo, na.rm=TRUE),
+    prop_cross_zero = mean(lo < 0 & hi > 0, na.rm=TRUE)
+  )
+}
+
+bind_rows(
+  block_sum(mh, psy,  "MH–Psychophysics"),
+  block_sum(mh, maia, "MH–MAIA")
+)
+
+```
+
+```{r}
+library(dplyr)
+library(tibble)
+library(officer)
+
+r3 <- function(df) mutate(df, across(where(is.numeric), ~ round(.x, 3)))
+
+# ---- Table 1: MH–Intero edges (ALL pairs incl. zeros) ----
+tab_edges <- bind_rows(
+  expand.grid(MH = nodes_mh, Node = nodes_psy, stringsAsFactors = FALSE) %>%
+    mutate(Type = "MH–Psychophysics",
+           Weight = as.vector(A[nodes_mh, nodes_psy, drop=FALSE])),
+  expand.grid(MH = nodes_mh, Node = nodes_maia, stringsAsFactors = FALSE) %>%
+    mutate(Type = "MH–MAIA",
+           Weight = as.vector(A[nodes_mh, nodes_maia, drop=FALSE]))
+) %>%
+  dplyr::select(Type, MH, Node, Weight) %>%
+  arrange(desc(abs(Weight))) %>%
+  r3()
+
+# ---- Table 2: Bridge strength (ordered) ----
+tab_bridge <- tibble(
+  Node = c(nodes_psy, nodes_maia),
+  Block = rep(c("Psychophysics","MAIA"),
+              c(length(nodes_psy), length(nodes_maia))),
+  `Bridge strength` = bs[c(nodes_psy, nodes_maia)]
+) %>%
+  arrange(desc(`Bridge strength`)) %>%
+  r3()
+
+# ---- Table 3: Edge accuracy (ordered by CI width; no crosses_zero) ----
+tab_edgeacc <- edge_acc %>%
+  transmute(Edge=edge, `CI lower`=CI.lower, `CI upper`=CI.upper, `CI width`=ci_width) %>%
+  arrange(desc(`CI width`)) %>%
+  r3()
+
+# ---- Table 4: Block bootstrap summary (ordered) ----
+tab_block <- bind_rows(
+  block_sum(mh, psy,  "MH–Psychophysics"),
+  block_sum(mh, maia, "MH–MAIA")
+) %>%
+  transmute(Contrast=type, `N edges`=n, `Median |edge|`=median_abs_edge,
+            `Median CI width`=median_ci_width, `Prop CIs include 0`=prop_cross_zero) %>%
+  arrange(desc(`Median |edge|`)) %>%
+  r3()
+
+# ---- Table 5: Centrality stability (single row) ----
+tab_stab <- tibble(
+  Centrality = "Strength",
+  `CS coefficient` = as.numeric(corStability(boot_case))
+) %>%
+  r3()
+
+# ---- write Word document ----
+doc <- read_docx()
+doc <- body_add_par(doc, "Table 1. MH–Intero edges (including zero edges)", style="heading 2")
+doc <- body_add_table(doc, tab_edges, style="table_template")
+doc <- body_add_par(doc, "Table 2. Bridge strength (ordered)", style="heading 2")
+doc <- body_add_table(doc, tab_bridge, style="table_template")
+doc <- body_add_par(doc, "Table 3. Edge accuracy (ordered by CI width)", style="heading 2")
+doc <- body_add_table(doc, tab_edgeacc, style="table_template")
+doc <- body_add_par(doc, "Table 4. Block bootstrap summary (ordered by median |edge|)", style="heading 2")
+doc <- body_add_table(doc, tab_block, style="table_template")
+doc <- body_add_par(doc, "Table 5. Centrality stability (case-dropping bootstrap)", style="heading 2")
+doc <- body_add_table(doc, tab_stab, style="table_template")
+
+print(doc, target="~/Git/InteroMentalHealth/figures/Network/APA_network_tables.docx")
+
+```
+
+
+

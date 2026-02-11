@@ -1,0 +1,229 @@
+﻿Item,Question
+aq10_1,I often notice small sounds when others do not
+aq10_2,"I usually concentrate more on the whole picture, rather than the small details"
+aq10_3,I find it easy to do more than one thing at once
+aq10_4,"If there is an interruption, I can switch back to what I was doing very quickly"
+aq10_5,I find it easy to ‘read between the lines’ when someone is talking to me
+aq10_6,I know how to tell if someone listening to me is getting bored
+aq10_7,When I’m reading a story I find it difficult to work out the characters’ intentions
+aq10_8,"I like to collect information about categories of things (e.g. types of car, types of bird, types of train, types of plant etc)"
+aq10_9,I find it easy to work out what someone is thinking or feeling just by looking at their face
+aq10_10,I find it difficult to work out people’s intentions
+asrs_a_1,"How often do you have trouble wrapping up the final details of a project, once the challenging parts have been done?"
+asrs_a_2,How often do you have difficulty getting things in order when you have to do a task that requires organization?
+asrs_a_3,How often do you have problems remembering appointments or obligations?
+asrs_a_4,"When you have a task that requires a lot of thought, how often do you avoid or delay getting started?"
+asrs_a_5,How often do you fidget or squirm with your hands or feet when you have to sit down for a long time?
+asrs_a_6,"How often do you feel overly active and compelled to do things, like you were driven by a motor?"
+asrs_b_1,How often do you make careless mistakes when you have to work on a boring or difficult project?
+asrs_b_2,How often do you have difficulty keeping your attention when you are doing boring or repetitive work?
+asrs_b_3,"How often do you have difficulty concentrating on what people say to you, even when they are speaking to you directly?"
+asrs_b_4,How often do you misplace or have difficulty finding things at home or at work?
+asrs_b_5,How often are you distracted by activity or noise around you?
+asrs_b_6,How often do you leave your seat in meetings or other situations in which you are expected to remain seated?
+asrs_b_7,How often do you feel restless or fidgety?
+asrs_b_8,How often do you have difficulty unwinding and relaxing when you have time to yourself?
+asrs_b_9,How often do you find yourself talking too much when you are in social situations?
+asrs_b_10,"When you’re in a conversation, how often do you find yourself finishing the sentences of the people you are talking to, before they can finish them themselves?"
+asrs_b_11,How often do you have difficulty waiting your turn in situations when turn taking is required?
+asrs_b_12,How often do you interrupt others when they are busy?
+iri_1,"I daydream and fantasize, with some regularity, about things that might happen to me"
+iri_2,"I often have tender, concerned feelings for people less fortunate than me"
+iri_3,I sometimes find it difficult to see things from the 'other guy's' point of view
+iri_4,Sometimes I don't feel very sorry for other people when they are having problems
+iri_5,I really get involved with the feelings of the characters in a novel
+iri_6,"In emergency situations, I feel apprehensive and ill-at-ease"
+iri_7,"I am usually objective when I watch a movie or play, and I don't often get completely caught up in it"
+iri_8,I try to look at everybody's side of a disagreement before I make a decision
+iri_9,"When I see someone being taken advantage of, I feel kind of protective towards them"
+iri_10,I sometimes feel helpless when I am in the middle of a very emotional situation
+iri_11,I sometimes try to understand my friends better by imagining how things look from their perspective
+iri_12,Becoming extremely involved in a good book or movie is somewhat rare for me
+iri_13,"When I see someone get hurt, I tend to remain calm"
+iri_14,Other people's misfortunes do not usually disturb me a great deal
+iri_15,"If I'm sure I'm right about something, I don't waste much time listening to other people's arguments"
+iri_16,"After seeing a play or movie, I have felt as though I were one of the characters"
+iri_17,Being in a tense emotional situation scares me
+iri_18,"When I see someone being treated unfairly, I sometimes don't feel very much pity for them"
+iri_19,I am usually pretty effective in dealing with emergencies
+iri_20,I am often quite touched by things that I see happen
+iri_21,I believe that there are two sides to every question and try to look at them both
+iri_22,I would describe myself as a pretty soft-hearted person
+iri_23,"When I watch a good movie, I can very easily put myself in the place of a leading character"
+iri_24,I tend to lose control during emergencies
+iri_25,"When I'm upset at someone, I usually try to 'put myself in his shoes' for a while"
+iri_26,"When I am reading an interesting story or novel, I imagine how I would feel if the events in the story were happening to me"
+iri_27,"When I see someone who badly needs help in an emergency, I go to pieces"
+iri_28,"Before criticizing somebody, I try to imagine how I would feel if I were in their place"
+isi_1,Difficulty falling asleep:
+isi_2,Difficulty staying asleep:
+isi_3,Problem waking up too early in the morning:
+isi_4,How SATISFIED/dissatisfied are you with your current sleep pattern?
+isi_5,How NOTICEABLE to others do you think your sleeping problem is in terms of impairing the quality of your life?
+isi_6,How WORRIED/distressed are you about your current sleep problem?
+isi_7,"To what extent do you consider your sleep problem to INTERFERE with your daily functioning (e.g., daytime fatigue, ability to function at work/daily chores, concentration, memory, mood)."
+mdi_1,Have you felt low in spirits or sad?
+mdi_2,Have you lost interest in your daily activities?
+mdi_3,Have you felt lacking in energy and strength?
+mdi_4,Have you felt less self-confident?
+mdi_5,Have you had a bad conscience or feelings of guilt?
+mdi_6,Have you felt that life wasn’t worth living?
+mdi_7,"Have you had difficulty in concentrating, e.g. when reading the newspaper or watching TV?"
+mdi_8a,Have you felt very restless?
+mdi_8b,Have you felt subdued or slowed down?
+mdi_9a,Have you been sleeping too little?
+mdi_9b,Have you been sleeping too much?
+mdi_10a,Have you suffered from reduced appetite?
+mdi_10b,Have you suffered from increased appetite?
+mfi20_1,I feel fit.
+mfi20_2,"Physically, I feel only able to do a little."
+mfi20_3,I feel very active.
+mfi20_4,I feel like doing all sorts of nice things.
+mfi20_5,I feel tired.
+mfi20_6,I think I do a lot in a day.
+mfi20_7,"When I am doing something, I can keep my thoughts on it."
+mfi20_8,Physically I can take on a lot.
+mfi20_9,I dread having to do things.
+mfi20_10,I think I do very little in a day.
+mfi20_11,I can concentrate well.
+mfi20_12,I am rested.
+mfi20_13,It takes a lot of effort to concentrate on things.
+mfi20_14,Physically I feel I am in a bad condition.
+mfi20_15,I have a lot of plans.
+mfi20_16,I tire easily.
+mfi20_17,I get little done.
+mfi20_18,I don't feel like doing anything.
+mfi20_19,My thoughts easily wander.
+mfi20_20,Physically I feel I am in an excellent condition.
+mpsss_1,There is a special person who is around when I am in need.
+mpsss_2,There is a special person with whom I can share joys and sorrows.
+mpsss_3,My family really tries to help me.
+mpsss_4,I get the emotional help & support I need from my family.
+mpsss_5,I have a special person who is a real source of comfort to me.
+mpsss_6,My friends really try to help me.
+mpsss_7,I can count on my friends when things go wrong.
+mpsss_8,I can talk about my problems with my family.
+mpsss_9,I have friends with whom I can share my joys and sorrows.
+mpsss_10,There is a special person in my life who cares about my feelings.
+mpsss_11,My family is willing to help me make decisions.
+mpsss_12,I can talk about my problems with my friends.
+phq_9_1,Little interest or pleasure in doing things
+phq_9_2,"Feeling down, depressed, or hopeless"
+phq_9_3,"Trouble falling or staying asleep, or sleeping too much"
+phq_9_4,Feeling tired or having little energy
+phq_9_5,Poor appetite or overeating
+phq_9_6,Feeling bad about yourself — or that you are a failure or have let yourself or your family down
+phq_9_7,"Trouble concentrating on things, such as reading the newspaper or watching television"
+phq_9_8,Moving or speaking so slowly that other people could have noticed? Or the opposite — being so fidgety or restless that you have been moving around a lot more than usual
+phq_9_9,Thoughts that you would be better off dead or of hurting yourself in some way
+phq_9_10,"If you checked off any problems, how difficult have these problems made it for you to do your work, take care of things at home, or get along with other people?"
+phq15_1,Stomach pain
+phq15_2,Back pain
+phq15_3,"Pain in your arms, legs, or joints (knees, hips, etc.)"
+phq15_4,Menstrual cramps or other problems with your periods (women only)
+phq15_5,Pain or problems during sexual intercourse
+phq15_6,Headaches
+phq15_7,Chest pain
+phq15_8,Dizziness
+phq15_9,Fainting spells
+phq15_10,Feeling your heart pound or race
+phq15_11,Shortness of breath
+phq15_12,"Constipation, loose bowels, or diarrhea"
+phq15_13,"Nausea, gas, or indigestion"
+phq15_14,"Trouble falling asleep, sleeping or sleeping too much"
+phq15_15,Felt tired or only had little energy
+pss_1,"In the last month, how often have you been upset because of something that happened unexpectedly?"
+pss_2,"In the last month, how often have you felt that you were unable to control the important things in your life?"
+pss_3,"In the last month, how often have you felt nervous and stressed?"
+pss_4,"In the last month, how often have you felt confident about your ability to handle your personal problems?"
+pss_5,"In the last month, how often have you felt that things were going your way?"
+pss_6,"In the last month, how often have you found that you could not cope with all the things that you had to do?"
+pss_7,"In the last month, how often have you been able to control irritations in your life?"
+pss_8,"In the last month, how often have you felt that you were on top of things?"
+pss_9,"In the last month, how often have you been angered because of things that happened that were outside of your control?"
+pss_10,"In the last month, how often have you felt difficulties were piling up so high that you could not overcome them?"
+sias_1,"I get nervous if I have to speak with someone in authority (teacher, boss, etc.)."
+sias_2,I have difficulty making eye contact with others.
+sias_3,I become tense if I have to talk about myself or my feelings.
+sias_4,I find it difficult to mix comfortably with the people I work with.
+sias_5,I find it easy to make friends my own age.
+sias_6,I tense up if I meet an acquaintance in the street.
+sias_7,"When mixing socially, I am uncomfortable."
+sias_8,I feel tense if I am alone with just one other person.
+sias_9,"I am at ease meeting people at parties, etc."
+sias_10,I have difficulty talking with other people.
+sias_11,I find it easy to think of things to talk about.
+sias_12,I worry about expressing myself in case I appear awkward.
+sias_13,I find it difficult to disagree with another’s point of view.
+sias_14,I have difficulty talking to attractive persons of the opposite sex.
+sias_15,I find myself worrying that I won’t know what to say in social situations.
+sias_16,I am nervous mixing with people I don’t know well.
+sias_17,I feel I’ll say something embarrassing when talking.
+sias_18,"When mixing in a group, I find myself worrying I will be ignored."
+sias_19,I am tense mixing in a group.
+sias_20,"I am unsure whether to greet someone I know only slightly."""
+stai_21,I feel pleasant
+stai_22,I feel nervous and restless
+stai_23,I feel satisfied with myself
+stai_24,I wish I could be as happy as others seem to be
+stai_25,I feel like a failure
+stai_26,I feel rested
+stai_27,"I am 'calm, cool, and collected'"
+stai_28,I feel that difficulties are piling up so that I cannot overcome them
+stai_29,I worry too much over something that really doesn't matter
+stai_30,I am happy
+stai_31,I have disturbing thoughts
+stai_32,I lack self-confidence
+stai_33,I feel secure
+stai_34,I make decisions easily
+stai_35,I feel inadequate
+stai_36,I am content
+stai_37,Some unimportant thought runs through my mind and bothers me
+stai_38,I take disappointments so keenly that I can't put them out of my mind
+stai_39,I am a steady person
+stai_40,I get in a state of tension or turmoil as I think over my recent concerns and interests
+wemwsb_1,I've been feeling optimistic about the future.
+wemwsb_2,I've been feeling useful.
+wemwsb_3,I've been feeling relaxed.
+wemwsb_4,I've been feeling interested in other people.
+wemwsb_5,I've had energy to spare.
+wemwsb_6,I've been dealing with problems well.
+wemwsb_7,I've been thinking clearly.
+wemwsb_8,I've been feeling good about myself.
+wemwsb_9,I've been feeling close to other people.
+wemwsb_10,I've been feeling confident.
+wemwsb_11,I've been able to make up my own mind about things.
+wemwsb_12,I've been feeling loved.
+wemwsb_13,I've been interested in new things.
+wemwsb_14,I've been feeling cheerful.
+who5_1,I have felt cheerful and in good spirits
+who5_2,I have felt calm and relaxed
+who5_3,I have felt active and vigorous
+who5_4,I woke up feeling fresh and rested
+who5_5,My daily life has been filled with things that interest me
+whoqol_1,How would you rate your quality of life?
+whoqol_2,How satisfied are you with your health?
+whoqol_3,To what extent do you feel that physical pain prevents you from doing what you need to do?
+whoqol_4,How much do you need any medical treatment to function in your daily life?
+whoqol_5,How much do you enjoy life?
+whoqol_6,To what extent do you feel your life to be meaningful?
+whoqol_7,How well are you able to concentrate?
+whoqol_8,How safe do you feel in your daily life?
+whoqol_9,How healthy is your physical environment?
+whoqol_10,Do you have enough energy for everyday life?
+whoqol_11,Are you able to accept your bodily appearance?
+whoqol_12,Have you enough money to meet your needs?
+whoqol_13,How available to you is the information that you need in your day-to-day life?
+whoqol_14,To what extent do you have the opportunity for leisure activities?
+whoqol_15,How well are you able to get around?
+whoqol_16,How satisfied are you with your sleep?
+whoqol_17,How satisfied are you with your ability to perform your daily living activities?
+whoqol_18,How satisfied are you with your capacity for work?
+whoqol_19,How satisfied are you with yourself?
+whoqol_20,How satisfied are you with your personal relationships?
+whoqol_21,How satisfied are you with your sex life?
+whoqol_22,How satisfied are you with the support you get from your friends?
+whoqol_23,How satisfied are you with the conditions of your living place?
+whoqol_24,How satisfied are you with your access to health services?
+whoqol_25,How satisfied are you with your mode of transportation?
+whoqol_26,"How often do you have negative feelings, such as blue mood, despair, anxiety, depression?"

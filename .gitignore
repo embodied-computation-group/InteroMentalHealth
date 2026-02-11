@@ -1,0 +1,8 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+data/alldata_acc.csv
+data/alldata.csv
+data/allsurveys.csv
+data/PsychEFAs/SubIDs_PsychEFA.csv

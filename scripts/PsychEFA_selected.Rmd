@@ -1,0 +1,670 @@
+---
+title: "PsychEFA - selected surveys"
+output: html_document
+date: '2024-06-14'
+---
+
+### Load mental health data 
+```{r}
+
+# clean slate to be sure
+rm(list = ls())
+
+# check for pacman package and install if not found
+if (!require("pacman")) install.packages("pacman")
+  pacman::p_load(readr,psych,polycor,corrplot,lattice,nFactors,GPArotation,EFA.dimensions,circlize,OpenMx,qgraph,ComplexHeatmap, webshot2, dplyr)
+
+# check for pacman package and install if not found
+if (!require("pacman")) install.packages("pacman")
+  pacman::p_load(readr,psych,polycor,corrplot,lattice,nFactors,GPArotation,EFA.dimensions,dplyr, tidyverse, here, circlize, BiocManager, ComplexHeatmap, gplots, gridExtra, gt, kableExtra, ggcorrplot, R.matlab, EFAtools, moments)
+
+  
+# Load surveys and collate to 1 file  
+# survey_path <- '/mnt/raid0/scratch/BIDS/phenotype/'
+# 
+# # excluded "maia" (factors had low internal consistency reliability) & "oci_r" (many subjects who just completed BrainExplorer but not other surveys)??
+# # surveys with vmp1 & vmp2 data
+# survey_names <- c("demographics", "aq10", "asrs", "iri", "isi", "maia", "mdi", "mfi", "mpsss", "oci_r", "phq_9", "phq15", "pss", "sias", "stai", "wemwsb", "who5", "whoqol")
+# 
+# # merge all survey data into 1 file
+# survey_list <- list()
+# for (i in seq_along(survey_names)) {
+#   survey <- survey_names[i]
+#   survey_data <- read_tsv(paste0(survey_path, survey, "/", survey, ".tsv"))
+# 
+#    if (i == 1) {
+#     # For the first survey (demographics), include all identifying columns
+#     survey_data <- survey_data %>%
+#       select(-matches("^(handedness|head_size|circumfrence_head|hat_size|task)$"))
+#   } else if (survey == 'stai') {
+#     # For stai only trait subscale (has both vmp1&vmp2)
+#     survey_data <- survey_data %>%
+#       select(matches("^stai_(2[1-9]|[3-9][0-9]|40)$"))
+#   } else {
+#     # For subsequent surveys, exclude participant_id, id, cohort, task columns
+#     survey_data <- survey_data %>%
+#       select(-matches("^(participant_id|id|cohort|task)$"))
+#   }
+# 
+#   # Add the data frame to the list
+#   survey_list[[survey]] <- survey_data
+# }
+# # Combine all data frames by adding columns
+# merged_data <- bind_cols(survey_list)
+# 
+# # tidy
+# merged_data[is.na(merged_data)] <- "n/a"
+# cols_to_keep_as_character <- c("participant_id", "gender", "cohort")
+# merged_data[, !(names(merged_data) %in% cols_to_keep_as_character)] <- lapply(merged_data[, !(names(merged_data) %in% cols_to_keep_as_character)], as.numeric)
+#
+# # save all psych data
+# write.csv(merged_data, "~/Git/InteroMentalHealth/data/allsurveys.csv", row.names = FALSE)
+  
+allsurveys <- read_csv("~/Git/InteroMentalHealth/data/allsurveys.csv")[ ,9:286] #remove beginning cols for EFA
+allsurveys <- allsurveys[, !(names(allsurveys) %in% c("phq_9_10", "phq15_4", "whoqol_4"))] # items with excessive NaNs than usual
+
+# Select the following survey data - Autism, ADHD, Depression, Somatic Symptoms, Stress, Social Anxiety, Trait Anxiety (improves item-subject ratio)
+selected_surveys <- allsurveys %>%
+  dplyr::select(starts_with("aq10"), starts_with("asrs"), starts_with("mdi"),
+                starts_with("phq"), starts_with("pss"), starts_with("sias"),
+                starts_with("stai"))
+
+sub_id <- read_tsv("/mnt/raid0/scratch/BIDS/phenotype/demographics/demographics.tsv")$participant_id # participant_id
+selected_surveys <- cbind(sub_id, selected_surveys)
+
+selected_surveys <- na.omit(selected_surveys)
+
+# Load the text details of each item included
+surveyitems <- read_csv('~/Git/InteroMentalHealth/data/SurveyItems.csv')
+surveyitems <- surveyitems %>% filter(!Item %in% c("phq_9_10", "phq15_4", "whoqol_4"))# items with excessive NaNs than usual 
+prefixes <- paste0("^(", paste(c("aq10", "asrs", "mdi", "phq", "pss", "sias", "stai"), collapse = "|"), ")") 
+selected_surveyitems <- surveyitems %>%
+  filter(grepl(prefixes, Item)) # Filter the surveyitems based on the prefixes
+
+rm(allsurveys, surveyitems, prefixes) # tidy
+
+```
+    
+### Remove multivaraite outliers and check EFA assumptions
+```{r}
+
+# Detect multivariate outliers via Mahalanobis Distance 
+distances <- mahalanobis(x = selected_surveys[ ,2:ncol(selected_surveys)], center = colMeans(selected_surveys[ ,2:ncol(selected_surveys)]), cov = cov(selected_surveys[ ,2:ncol(selected_surveys)]))
+cutoff <- qchisq(p = 1 - 0.001, df = ncol(selected_surveys[ ,2:ncol(selected_surveys)])) # Cutoff value for ditances from Chi-Sqaure Dist. 
+outliers <- distances > cutoff ## Display observation whose distance greater than cutoff value
+# Remove outliers from the dataframe
+selected_surveys <- selected_surveys[!outliers, ] # 47 multivariate outliers
+
+# save sub_id's 
+#write.csv(selected_surveys$sub_id, "~/Git/InteroMentalHealth/data/SubIDs_PsychEFA.csv", row.names = FALSE)
+selected_surveys <- selected_surveys[ ,-c(1)] # remove id col
+
+# make cormatrix 
+selected_surveys <- as.data.frame(lapply(selected_surveys, as.numeric))
+hetcormatrix <- hetcor(selected_surveys)
+
+# EFA assumptions
+
+# Bartlett’s Test of Sphericity (relationship strength/multivariate normality)
+# ^statistically significant chi-square value to justify the application of EFA.
+cortest.bartlett(hetcormatrix$correlations, nrow(selected_surveys))
+
+# Kaiser-Meyer-Olkin test for sampling adequacy
+# Overall KMO values ≥.70 are desired, values less than .50 are generally considered unacceptable
+KMO_results = KMO(hetcormatrix$correlations)
+
+# remove phq15_9 as KMO < 0.5
+which(KMO_results$KMO_i < 0.5)
+selected_surveys <-selected_surveys[, !(names(selected_surveys) %in% c("phq15_9"))] 
+selected_surveyitems <- selected_surveyitems %>% filter(!Item %in% c("phq15_9"))
+selected_surveys <- as.data.frame(lapply(selected_surveys, as.numeric))
+hetcormatrix <- hetcor(selected_surveys) # new cor matrix without phq15_9
+
+cortest.bartlett(hetcormatrix$correlations, nrow(selected_surveys))
+KMO(hetcormatrix$correlations)
+
+```
+
+### Determine number of factors
+```{r}
+
+# Parallel analysis and Scree plot 
+ev <- eigen(hetcormatrix$correlations)
+ap <- parallel(subject=nrow(selected_surveys),var=ncol(selected_surveys),
+               rep=1000,cent=.05)
+nS <- nScree(x=ev$values, aparallel=ap$eigen$qevpea)
+plotnScree(nS)
+sprintf("Parallel Analysis recommends %s factors",nS$Components$nparallel) # 11
+
+```
+
+### Run EFA
+```{r}
+
+# EFA with 11 fatcors (parallel analysis & scree plot)
+PsychEFA_nfact11 = fa(hetcormatrix$correlations, nfactors=11, rotate = "oblimin", fm = "wls", n.obs=nrow(selected_surveys)) 
+
+```
+
+### Interpret EFA results
+```{r}
+
+# function for showing which items load in each factor (& no/cross-loading items & CFI fit index)
+EFA_results <- function(fa_results, surveyitems, data) {
+  matching_items <- list()
+  for (factor in 1:ncol(fa_results$loadings)) {   # Loop through each factor
+    # Get the loadings for the current factor
+    current_loadings <- fa_results$loadings[, factor]
+    
+    # Find indices of items with loadings greater than 0.3 (absolute value)
+    significant_indices <- which(abs(current_loadings) > 0.3)
+    
+    # Extract corresponding items from the surveyitems data frame
+    matched_items <- surveyitems[significant_indices, ]
+    
+    # Add the loadings to the matched items for sorting
+    matched_items$Loading <- round(current_loadings[significant_indices],3)
+    
+    # Sort the matched items by the absolute value of the loadings in descending order
+    matched_items <- matched_items[order(abs(matched_items$Loading), decreasing = TRUE), ]
+    
+    # Store the results in the list, keeping the Loading column for reference
+    matching_items[[paste("Factor", factor)]] <- matched_items
+    
+    # print reliability of factor
+    suppressMessages(suppressWarnings({cron_alpha <- psych::alpha(data[ , significant_indices], check.keys = TRUE)$total$std.alpha}))
+    suppressMessages(suppressWarnings({omega_coeffs <- omega(data[ , significant_indices])}))
+    print(sprintf('factor %d: Cronbach\'s alpha = %f, omega hierach = %f, omega total = %f', 
+              factor, 
+              cron_alpha, 
+              omega_coeffs$omega_h, 
+              omega_coeffs$omega.tot))
+  }
+  # Print the matching items for each factor
+  matching_items
+  
+  #number of cross/no loading items
+  print(sprintf('number of cross loading items (>0.3): %d', sum(apply(fa_results$loadings, 1, function(row) sum(abs(row) > 0.3) > 1))))
+  print(sprintf('number of no loading items (<0.3): %d', sum(apply(fa_results$loadings, 1, function(row) all(abs(row) < 0.3)))))
+  
+  # Fit indices
+  CFI_index = 1 - ((fa_results$STATISTIC-fa_results$dof)/
+         (fa_results$null.chisq-fa_results$null.dof))
+  print(sprintf('CFI index: %f', CFI_index))
+
+  print(sprintf('TLI: %f',fa_results$TLI)) 
+  print(sprintf('RMSEA index: %f',fa_results$RMSEA[1]))        
+  print(sprintf('BIC: %f',fa_results$BIC))          
+  print(sprintf('Fit off-diagonal values: %f',fa_results$fit.off))     
+
+  return(matching_items)
+}
+
+
+# Interpret EFA - 11 factor solution
+EFA_results(PsychEFA_nfact11, selected_surveyitems, selected_surveys)
+
+```
+
+### Multi-level EFA for 11 factor solution 
+```{r}
+# Extract factor scores for lower-order factors (11 factor solution)
+factor_scores <- factor.scores(selected_surveys, PsychEFA_nfact11)$scores 
+
+# Determine the number of higher-order factors using parallel analysis (using factor scores from 1st level)
+ev_2 <- eigen(hetcor(factor_scores)$correlations)
+ap_2 <- parallel(subject=nrow(factor_scores),var=ncol(factor_scores),
+               rep=1000,cent=.05)
+nS_2 <- nScree(x=ev_2$values, aparallel=ap_2$eigen$qevpea)
+plotnScree(nS_2)
+sprintf("Parallel Analysis recommends %s factors",nS_2$Components$nparallel) # 2 factors
+
+
+# Perform hierarchical factor analysis using fa.multi
+multiEFA_results <- fa.multi(hetcor(selected_surveys)$correlations, nfactors = 11, nfact2 = 2,  
+                             n.obs = nrow(selected_surveys), rotate = "oblimin", fm = "wls")
+
+# Inspect the results
+print(multiEFA_results)
+fa.multi.diagram(multiEFA_results)
+
+# level 1
+EFA_results(multiEFA_results$f1, selected_surveyitems, selected_surveys) #[-items2remove, ]
+
+# level 2 
+# Loop through each factor for 2nd level
+for (factor in 1:ncol(multiEFA_results$f2$loadings)) {
+  # Get the loadings for the current factor
+  current_loadings <- multiEFA_results$f2$loadings[, factor]
+  # Find indices of items with loadings greater than 0.3 (absolute value)
+  print(significant_indices <- which(abs(current_loadings) > 0.3))
+}
+
+```
+
+### Save EFA loadings for each subject - multi EFA (lower 11, higher 2) 
+```{r, message=FALSE, results='hide'}
+# Extract factor scores for lower-order factors (11 factor solution)
+factorscores_f1 <- as.data.frame(factor.scores(selected_surveys, multiEFA_results$f1, method="Bartlett")$scores)
+colnames(factorscores_f1) <- list("Social Anxiety", "Happiness/Self-Esteem", "Insomnia/Fatigue", "Depression", "Inattentiveness", "Anxiety", "Stress", "Restless/Concentration", "Somatic Symptoms", "Autism", "Impulsivity")
+# Extract factor scores for higher-order factors (2 higher factors - using 11 VSS factor solution)
+factorscores_f2 <- as.data.frame(factor.scores(factorscores_f1, multiEFA_results$f2, method="Bartlett")$scores)
+colnames(factorscores_f2) <- list("Negative Mental Health", "ADHD & Anxiety")
+
+# Save the combined EFA loadings as a CSV file
+write.csv(cbind(factorscores_f1, factorscores_f2), "~/Git/InteroMentalHealth/data/PsychEFAs/NoVSS/PsychEFA_nfact-lower11-higher2.csv", row.names = FALSE)
+
+# plot
+#args <- list(xlim=range(cbind(factorscores_f1, factorscores_f2), na.rm=TRUE), xlab="Factor loadings (individual subjects)")
+#mapply(hist, cbind(factorscores_f1, factorscores_f2), main=colnames(cbind(factorscores_f1, factorscores_f2)), MoreArgs=args)
+
+```
+
+
+### Remove no/cross-loading items to acheive Very Simple Structure (VSS) - 11 factor solution
+```{r}
+
+# function for finding no/cross-laoding items
+find_badloadings <- function (fa_results) {
+  # Finding the cross-loading items
+  crossload_idx <- which(apply(fa_results$loadings, 1, function(row) sum(abs(row) > 0.3) > 1))
+  print('cross-loading items: ')
+  print(rownames(fa_results$loadings)[crossload_idx])
+  
+  print('')
+  
+  # Finding the no-loading items
+  noload_idx <- which(apply(fa_results$loadings, 1, function(row) all(abs(row) < 0.3)))
+  print('no-loading items: ')
+  print(rownames(fa_results$loadings)[noload_idx])
+  
+  items2remove <- c(crossload_idx, noload_idx)
+
+  return(items2remove)
+
+}
+
+# VSS - nfact = 11
+items2remove <- find_badloadings(PsychEFA_nfact11)
+PsychEFA11_vss1= fa(hetcormatrix$correlations[-items2remove, -items2remove], nfactors=11, rotate = "oblimin", fm = "wls", n.obs=nrow(selected_surveys)) 
+EFA_results(PsychEFA11_vss1, selected_surveyitems[-items2remove, ], selected_surveys[ ,-items2remove])
+fa.diagram(PsychEFA11_vss1)
+
+# Multi-level EFA for 11 VSS factor solution 
+factor_scores <- factor.scores(selected_surveys[ ,-items2remove], PsychEFA11_vss1)$scores # Extract factor scores for lower-order factors (11 factor solution)
+
+# Determine the number of higher-order factors using parallel analysis (using factor scores from 1st level)
+ev_2 <- eigen(hetcor(factor_scores)$correlations)
+ap_2 <- parallel(subject=nrow(factor_scores),var=ncol(factor_scores),
+               rep=1000,cent=.05)
+nS_2 <- nScree(x=ev_2$values, aparallel=ap_2$eigen$qevpea)
+plotnScree(nS_2)
+sprintf("Parallel Analysis recommends %s factors",nS_2$Components$nparallel) # 2 factors
+
+# Perform hierarchical factor analysis using fa.multi
+multiEFA_results <- fa.multi(hetcormatrix$correlations[-items2remove, -items2remove], nfactors = 11, nfact2 = 2,  
+                             n.obs = nrow(selected_surveys), rotate = "oblimin", fm = "wls")
+
+# Inspect the results
+print(multiEFA_results)
+#fa.diagram(multiEFA_results$f1)
+#fa.diagram(multiEFA_results$f2)
+fa.multi.diagram(multiEFA_results)
+
+# level 1
+EFA_results(multiEFA_results$f1, selected_surveyitems[-items2remove, ], selected_surveys[ ,-items2remove]) 
+
+# level 2 
+# Loop through each factor for 2nd level
+for (factor in 1:ncol(multiEFA_results$f2$loadings)) {
+  # Get the loadings for the current factor
+  current_loadings <- multiEFA_results$f2$loadings[, factor]
+  # Find indices of items with loadings greater than 0.3 (absolute value)
+  significant_indices <- which(abs(current_loadings) > 0.3)
+  print(round(current_loadings[significant_indices],3))
+}
+
+
+pdf("~/Git/InteroMentalHealth/figures/multiEFA_11facts_fadiagram.pdf", width = 15, height = 20)  # Set a larger canvas size
+fa.multi.diagram(multiEFA_results, cut=.3,	gcut=.3)
+dev.off()
+
+saveRDS(multiEFA_results, file = "~/Git/InteroMentalHealth/data/PsychEFAs/PsychEFAresults_vss_nfact-lower11-higher2.rds")
+
+
+# pdf("~/Git/InteroMentalHealth/figures/EFA/multiEFA_f1_fadiagram.pdf", width = 18, height = 20)  # Set a larger canvas size
+# fa.diagram(multiEFA_results$f1, cut=.3,	gcut=.3)
+# dev.off()
+# 
+# pdf("~/Git/InteroMentalHealth/figures/EFA/multiEFA_f2_fadiagram.pdf", width = 15, height = 20)  # Set a larger canvas size
+# fa.diagram(multiEFA_results$f2, cut=.3,	gcut=.3)
+# dev.off()
+
+```
+
+
+### Save EFA loadings for each subject - multi VSS EFA (lower 11, higher 2)
+```{r, message=FALSE, results='hide'}
+# Extract factor scores for lower-order factors (11 VSS factor solution)
+items2remove <- find_badloadings(PsychEFA_nfact11)
+factorscores_f1 <- as.data.frame(factor.scores(selected_surveys[ ,-items2remove], multiEFA_results$f1, method="Bartlett")$scores)
+colnames(factorscores_f1) <- list("Social Anxiety", "Happiness/Self-Esteem", "Insomnia/Fatigue", "Inattentiveness", "Depression",  "Anxiety", "Restlessness", "Stress", "Autism", "Somatic", "Impulsivity")
+# Extract factor scores for higher-order factors (2 higher factors - using 11 VSS factor solution)
+factorscores_f2 <- as.data.frame(factor.scores(factorscores_f1, multiEFA_results$f2, method="Bartlett")$scores)
+colnames(factorscores_f2) <- list("Negative Mental Health", "Anxiety & ADHD")
+
+# Save the combined EFA loadings as a CSV file
+write.csv(cbind(factorscores_f1, factorscores_f2), "~/Git/InteroMentalHealth/data/PsychEFAs/PsychEFAvss_nfact-lower11-higher2.csv", row.names = FALSE)
+
+# plot
+args <- list(xlim=range(cbind(factorscores_f1, factorscores_f2), na.rm=TRUE), xlab="Factor loadings (individual subjects)")
+mapply(hist, cbind(factorscores_f1, factorscores_f2), main=colnames(cbind(factorscores_f1, factorscores_f2)), MoreArgs=args)
+
+```
+
+# loading bar plot
+```{r}
+multiEFA_results <- readRDS("~/Git/InteroMentalHealth/data/PsychEFAs/PsychEFAresults_vss_nfact-lower11-higher2.rds")
+
+
+# Extract loadings & Label (level 1 EFA)
+multiEFA_loadings_l1 <- as.data.frame(unclass(multiEFA_results$f1$loadings))
+# Rename columns
+colnames(multiEFA_loadings_l1) <- c(
+  "SocialAnxiety", "Self-Confidence", "Sleep", "Inattentiveness", 
+  "Depression", "NegativeThoughts", "Restlessness", "Stress", 
+  "Autism", "Somatic", "Impulsivity"
+)
+# Add item names as a separate column
+multiEFA_loadings_l1$Item <- rownames(multiEFA_results$f1$loadings)
+
+
+# Extract loadings & Label (level 2 EFA)
+multiEFA_loadings_l2 <- as.data.frame(unclass(multiEFA_results$f2$loadings))
+colnames(multiEFA_loadings_l2) <- c(
+  "AffectiveSymptoms", "ADHD&Somatic"
+)
+# Add item names as a separate column
+multiEFA_loadings_l2$Factor <-  c("SocialAnxiety", "Self-Confidence", "Sleep", "Inattentiveness", "Depression", "NegativeThoughts", "Restlessness", "Stress", "Autism", "Somatic", "Impulsivity")
+
+  
+
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(tibble)
+
+# Prepare long-format data
+plot_data <- multiEFA_loadings_l2 %>%
+  rownames_to_column("LowerOrderFactor") %>%
+  pivot_longer(cols = c("AffectiveSymptoms", "ADHD&Somatic"), 
+               names_to = "HigherOrderFactor", values_to = "Loading") %>%
+  mutate(HigherOrderFactor = factor(HigherOrderFactor, levels = c("AffectiveSymptoms", "ADHD&Somatic")))
+
+# Plot
+ggplot(plot_data, aes(x = factor(Factor, levels = unique(multiEFA_loadings_l2$Factor)), 
+                      y = Loading, fill = HigherOrderFactor)) +
+  geom_bar(stat = "identity", colour = "black", width = 0.8) +
+  facet_wrap(~ HigherOrderFactor, ncol = 1, scales = "free_y") +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    strip.text = element_text(face = "bold", size = 14),
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Higher-Order Factor Loadings by Lower-Order Factor",
+    x = "Lower-Order Factor",
+    y = "Loading"
+  )
+
+
+ggplot(plot_data, aes(x = factor(Factor, levels = unique(multiEFA_loadings_l2$Factor)), 
+                      y = Loading, fill = HigherOrderFactor)) +
+  geom_bar(stat = "identity", colour = "black", width = 0.8) +
+  geom_hline(yintercept = 0.3, linetype = "dotted", colour = "lightblue", linewidth = 1) +
+  geom_hline(
+    data = subset(plot_data, HigherOrderFactor == "AffectiveSymptoms"),
+    aes(yintercept = -0.3),
+    inherit.aes = FALSE,
+    linetype = "dotted", colour = "lightblue", linewidth = 1
+  ) +
+  scale_fill_manual(values = c(
+    "AffectiveSymptoms" = "#a34b99", #"#78206e",	
+    "ADHD&Somatic" = "#3f73b9" #"#07478e", 	
+  )) +
+  facet_wrap(~ HigherOrderFactor, ncol = 1, scales = "free_y") +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    strip.text = element_text(face = "bold", size = 14),
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Higher-Order Factor Loadings by Lower-Order Factor",
+    x = "Lower-Order Factor",
+    y = "Loading"
+  )
+
+###########################################
+
+# Reshape to long format
+long_plot_data <- multiEFA_loadings_l1 %>%
+  pivot_longer(cols = -Item, names_to = "Factor", values_to = "Loading") %>%
+  mutate(
+    Item = str_replace(Item, "^phq_9", "phq9"),  # Replace "phq_9" with "phq9"
+    Survey = str_extract(Item, "^[^_]+")         # Extract up to first underscore
+  )
+
+long_plot_data <- long_plot_data %>%
+  mutate(
+    Survey = factor(Survey, levels = c(
+      "aq10", "asrs", "mdi", "phq9", "phq15", "pss", "sias", "stai"
+    )),
+    Survey = forcats::fct_relabel(Survey, toupper)  # Convert to all caps
+  )
+
+# Desired factor order
+desired_order <- c("SocialAnxiety", "Self-Confidence", "Sleep", 
+                   "Depression", "Stress", "Autism", "Inattentiveness", 
+                   "NegativeThoughts", "Restlessness", "Somatic", "Impulsivity")
+
+# Set Factor as a factor with levels in desired order
+long_plot_data <- long_plot_data %>%
+  mutate(Factor = factor(Factor, levels = desired_order))
+
+survey_colours <- c(
+  "AQ10" = "#f8766d",    
+  "ASRS" = "#f7ae7c",  
+  "MDI" = "#c4e798",     
+  "PHQ9" = "#61b96b", 
+  "PHQ15" = "#03c9be", 
+  "PSS" = "#00a9ff",    
+  "SIAS"  = "#c77cff",   
+  "STAI" = "#ff61cc"      
+)
+
+# Plot
+p <- ggplot(long_plot_data, aes(x = factor(Item, levels = unique(Item)), y = Loading, fill = Survey)) +
+  geom_bar(stat = "identity", colour = "black") +
+  facet_wrap(~ Factor, ncol = 2, scales = "free_y") +
+  scale_fill_manual(values = survey_colours) +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.1))) +
+  theme_minimal(base_size = 28) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    strip.text = element_text(face = "bold", size = 35),
+    axis.title = element_text(size = 28),
+    axis.text.y = element_text(size = 28),
+    legend.text = element_text(size = 32),
+    legend.title = element_text(size = 28),
+    axis.title.x = element_text(size = 32),       # x-axis label "Item"
+    axis.title.y = element_text(size = 32),       # y-axis label "Loading"
+    legend.position = "bottom",              # Move legend to bottom
+    legend.direction = "horizontal",         # Make legend horizontal
+    #legend.position = "right",
+    panel.background = element_rect(fill = "white", colour = NA),
+    strip.background = element_rect(fill = "white", colour = NA),
+    plot.background = element_rect(fill = "white", colour = NA),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    #plot.title = element_text(size = 25, face = "bold")
+  ) +
+  labs(
+    title = "Factor Loadings by Item",
+    x = "Survey Item",
+    y = "Loadings",
+    fill = "Survey"
+  )
+
+p
+
+
+ggsave("~/Git/InteroMentalHealth/figures/EFA/Loadings/LoadingsL1_PsychEFAvss_nfact-lower11-higher2__.png", plot = p, width = 40, height = 25, dpi = 300)
+
+```
+
+
+
+### EFA Table function
+```{r}
+
+fa_table <- function(x, varlabels = NULL, title = "Factor analysis results", diffuse = .10, small = .30, cross = .20, sort = TRUE) {
+  #get sorted loadings
+  require(dplyr)
+  require(purrr)
+  require(tibble)
+  require(gt)
+  if(sort == TRUE) {
+    x <- psych::fa.sort(x)
+  }
+  if(!is.null(varlabels)) {
+    if(length(varlabels) != nrow(x$loadings)) { warning("Number of variable labels and number of variables are unequal. Check your input!",
+                                                        call. = FALSE) }
+    if(sort == TRUE) {
+      varlabels <- varlabels[x$order]
+    }
+  }
+  if(is.null(varlabels)) {varlabels <- rownames(x$loadings)}
+  
+  loadings <- data.frame(unclass(x$loadings))
+  
+  #make nice names
+  factornamer <- function(nfactors) {
+    paste0("Factor_", 1:nfactors)}
+  
+  nfactors <- ncol(loadings)
+  fnames <- factornamer(nfactors)
+  names(loadings) <- fnames 
+  
+  # prepare locations
+  factorindex <- apply(loadings, 1, function(x) which.max(abs(x)))
+  
+  # adapted from from sjplot: getremovableitems
+  getRemovableItems <- function(dataframe, fctr.load.tlrn = diffuse) {
+    # clear vector
+    removers <- vector(length = nrow(dataframe))
+    # iterate each row of the data frame. each row represents
+    # one item with its factor loadings
+    for (i in seq_along(removers)) {
+      # get factor loadings for each item
+      rowval <- as.numeric(abs(dataframe[i, ]))
+      # retrieve highest loading
+      maxload <- max(rowval)
+      # retrieve 2. highest loading
+      max2load <- sort(rowval, TRUE)[2]
+      # check difference between both
+      if (abs(maxload - max2load) < fctr.load.tlrn) {
+        # if difference is below the tolerance,
+        # remeber row-ID so we can remove that items
+        # for further PCA with updated data frame
+        removers[i] <- TRUE
+      }
+    }
+    # return a vector with index numbers indicating which items
+    # have unclear loadings
+    return(removers)
+  }
+  if(nfactors > 1) {
+    removable <- getRemovableItems(loadings)
+    cross_loadings <- purrr::map2(fnames, seq_along(fnames), function(f, i) {
+      (abs(loadings[,f]) > cross) & (factorindex != i) 
+    })
+  }
+  
+  small_loadings <- purrr::map(fnames, function(f) {
+    abs(loadings[,f]) < small
+  })
+  
+  ind_table <- dplyr::tibble(varlabels, loadings) %>%
+    dplyr::rename(Indicator = varlabels) %>% 
+    dplyr::mutate(Communality = x$communality, Uniqueness = x$uniquenesses, Complexity = x$complexity) %>% 
+    dplyr::mutate(across(starts_with("Factor"), round, 3))  %>%
+    dplyr::mutate(across(c(Communality, Uniqueness, Complexity), round, 2))
+  
+  
+  ind_table <- ind_table %>% gt(rowname_col = "Indicator") %>% tab_header(title = title)
+  # mark small loadiongs
+  for(f in seq_along(fnames)) {
+    ind_table <- ind_table %>%  tab_style(style = cell_text(color = "#D3D3D3", style = "italic"),
+                                          locations = cells_body(columns = fnames[f], rows = small_loadings[[f]]))
+  }
+  # mark cross loadings
+  
+  if (nfactors > 1) {
+    for (f in seq_along(fnames)) {
+      ind_table <-
+        ind_table %>%  tab_style(
+          style = cell_text(style = "italic"),
+          locations = cells_body(columns = fnames[f], rows = cross_loadings[[f]])
+        )
+    }
+    # # mark non-assignable indicators (in red)
+    # ind_table <-
+    #   ind_table %>%  tab_style(style = cell_fill(color = "#D93B3B"),
+    #                            locations = cells_body(rows = removable))
+  }
+  
+  # adapted from https://www.anthonyschmidt.co/post/2020-09-27-efa-tables-in-r/
+  Vaccounted <- x[["Vaccounted"]]
+  colnames(Vaccounted) <- fnames 
+  if (nfactors > 1) {
+    Phi <- x[["Phi"]]
+    rownames(Phi) <- fnames
+    colnames(Phi) <- fnames
+    f_table <- rbind(Vaccounted, Phi) %>%
+      as.data.frame() %>% 
+      rownames_to_column("Property") %>%
+      mutate(across(where(is.numeric), round, 3)) %>%
+      gt() %>% tab_header(title = "Eigenvalues, Variance Explained, and Factor Correlations for Rotated Factor Solution")
+  }
+  else if(nfactors == 1) {
+    f_table <- rbind(Vaccounted) %>%
+      as.data.frame() %>% 
+      rownames_to_column("Property") %>%
+      mutate(across(where(is.numeric), round, 3)) %>%
+      gt() %>% tab_header(title = "Eigenvalues, Variance Explained, and Factor Correlations for Rotated Factor Solution")
+  }
+  
+  return(list("ind_table" = ind_table, "f_table" = f_table))
+  
+}
+
+multiEFA_f1 <- fa_table(multiEFA_results$f1)
+gtsave(multiEFA_f1$ind_table, "~/Git/InteroMentalHealth/figures/multiEFA_f1.html") # Save the tables as HTML
+
+multiEFA_f2 <- fa_table(multiEFA_results$f2)
+gtsave(multiEFA_f2$ind_table, "~/Git/InteroMentalHealth/figures/multiEFA_f2.html") # Save the tables as HTML
+
+```
+
+
+
+

@@ -1,0 +1,677 @@
+---
+title: "InteroMentalHealth"
+output: html_document
+date: '2022-06-21'
+---
+
+# Load packages 
+```{r}
+# clean slate to be sure
+rm(list = ls())
+
+# check for pacman package and install if not found
+if (!require("pacman")) install.packages("pacman")
+  pacman::p_load(tidyverse, here, corrplot, ggcorrplot, heatmap3, patchwork, cowplot, ggpubr, R.matlab, dplyr, BayesFactor,RColorBrewer, psych, ppcor, reshape2) 
+ 
+```
+
+
+# Read merged data of intero & mental health (& preprocess intero)
+```{r}
+alldata <- read_csv(here::here("data", "alldata_acc.csv"))
+#colSums(!is.na(alldata)) # - 513 HRDT, 267 RRST
+
+# preprocess slope & M-Ratio for intero tasks
+
+# Invert scale of hrd/extero slope (so higher = steeper slope (same as RRST)) (for both intero & extero)
+alldata[ ,'HRD_slope'] <- -(alldata[ ,'HRD_slope'])
+alldata[ ,'HRDextero_slope'] <- -(alldata[ ,'HRDextero_slope'])
+
+
+# M-Ratio: Replace negative M-Ratio values with NA 
+cols_to_modify <- c("mratio_hrd", "mratio_rrst", "mratio_extero")
+alldata[cols_to_modify] <- lapply(alldata[cols_to_modify], function(x) ifelse(x < 0, NA, x))
+
+# M-Ratio: remove high outliers from M-Ratio (MAD-based outlier removal to selected columns) 
+alldata[cols_to_modify] <- lapply(alldata[cols_to_modify], function(x) {
+  median_x <- median(x, na.rm = TRUE)
+  mad_x <- mad(x, na.rm = TRUE)
+  x[abs(x - median_x) > 3 * mad_x] <- NA
+  return(x) 
+})
+
+```
+
+
+# plot data & save descriptive tables
+```{r}
+colnames(alldata) <- gsub("_", ".", colnames(alldata)) # change _ to . in colnames
+cols = c("RRST.conf", "RRST.slope", "RRST.thresh", "mratio.rrst", "HRD.conf", "HRD.slope", "HRD.thresh", "HRD.absthresh", "mratio.hrd", "HRDextero.conf", "HRDextero.slope", "HRDextero.thresh", "HRDextero.absthresh", "mratio.extero", "multiEFA.l2.Negative Mental Health", "multiEFA.l2.Anxiety & ADHD",  "multiEFA.l1.Social Anxiety", "multiEFA.l1.Happiness/Self-Esteem", "multiEFA.l1.Insomnia/Fatigue", "multiEFA.l1.Inattentiveness", "multiEFA.l1.Depression", "multiEFA.l1.Anxiety", "multiEFA.l1.Restlessness", "multiEFA.l1.Stress", "multiEFA.l1.Autism", "multiEFA.l1.Somatic", "multiEFA.l1.Impulsivity", 'aq10', 'asrs.a.sum', 'asrs.b.sum', "cfq.sum", "covid", "cusados", "dq5", "facit.sum", 'iri.FS', 'iri.EC', 'iri.PT', 'iri.PD', 'isi', "maas", 'maia.notice', 'maia.ndistract', 'maia.nworry', 'maia.attnReg', 'maia.EmoAware', 'maia.SelfRef', 'maia.listen', 'maia.trust', 'mdi', 'mdq.pt1.sum.of.yes', 'mfi.physical.fatigue', 'mfi.general.fatigue', 'mfi.reduced.activity', 'mfi.reduced.motivation', 'mfi.mental.fatigue', 'mpsss.so', 'mpsss.fam', 'mpsss.friends', "oci.r", "pas", "pcl", 'phq9', 'phq15', "psqi.sum", 'pss', "sbsds", 'sias', "speq.p", "speq.c", "speq.cog", "speq.m", "speq.teps", "stai.state" , 'stai.trait', "sticsa.gm.cog", "sticsa.gm.som", 'wemwbs', 'who', 'whoqol.quality.life', 'whoqol.physical', 'whoqol.phychological', 'whoqol.social.relationships', 'whoqol.enviroment')
+corrdata <- alldata[ ,cols]
+# Loop through each column in the data frame
+for (colname in names(corrdata)) {
+  # Create a histogram for the current column
+  hist(corrdata[[colname]], main = colname, xlab = colname, col = 'lightblue', border = 'black')
+}
+
+```
+
+
+# Correlation matrix & scatterplot functions
+```{r}
+
+cormatrix_full <- function(cordata, title, subtitle, savepath) {
+  pval_fdr <- psych::corr.test(cordata, method = "spearman", adjust = "fdr")$p 
+  rval_fdr <- psych::corr.test(cordata, method = "spearman", adjust = "fdr")$r
+
+  cp1 <- ggcorrplot(rval_fdr,  hc.order=FALSE, p.mat = pval_fdr,
+             type='full',  method = "square", insig='blank', sig.level = 0.05,  
+             outline.col = "black",
+             #lab = TRUE,  # Add correlation values
+             #lab_col = "black",               # Label color
+             #lab_size = 1.5,                    # Label size
+             #digits = 2, # 2 decimal points
+             ggtheme = ggplot2::theme_minimal,
+             tl.cex = 8,
+            colors = c("#4a6fe3", "white", "#d33f6a")) + 
+    ggtitle(title) +
+    labs(subtitle = subtitle)+
+    theme(
+      axis.text.x = ggtext::element_markdown(angle = 45, hjust = 1),
+      axis.text.y = ggtext::element_markdown()
+    )
+  
+  png(filename = savepath, res = 300, units = "cm", width = 15, height = 15) 
+  print(cp1)
+  dev.off()
+}
+
+
+cormatrix_selected <- function(cordata, xlabel, ylabel, xnum, ynum, savepath) {
+  # Correlation plots
+  cormatrix <- t(psych::corr.test(cordata, method = "spearman", adjust = "fdr")$r[1:xnum, (xnum+1):(xnum+ynum)]) 
+  cor_pvals <- t(psych::corr.test(cordata, method = "spearman", adjust = "fdr")$p[1:xnum, (xnum+1):(xnum+ynum)])
+  png(filename = savepath, res = 300, height = ((ynum*3)+2), width = ((xnum*3)+2), units = "cm") # width for factors
+  # Plot the correlation matrix with significance markers
+  corrplot::corrplot(cormatrix,
+                     method = "color",
+                     addCoef.col = 'black',
+                     cl.pos = 'n',
+                     col.lim = c(min(cormatrix), max(cormatrix)),
+                     tl.col = "black",
+                     col = colorRampPalette(c("#4a6fe3", "white", "#d33f6a"))(100),  #c("blue", "white", "red"))(100)
+                     p.mat = cor_pvals,
+                     sig.level = 0.05,
+                     insig="blank",
+                     mar = c(0, 0, 1.75, 0)
+                     )$corrPos -> p1
+  #text(p1$x, p1$y, round(p1$corr, 2))
+  
+  # Draw a rectangle around the entire correlation matrix
+  rect(0.5, 0.5, ncol(cormatrix) + 0.5, nrow(cormatrix) + 0.5, border = "black", lwd = 2)
+  dev.off()
+}
+
+
+# Bayesian corplot: Function to compute a matrix of Bayes Factors for all pairwise correlations
+bayes_factor_matrix <- function(data, bayes_factor, savepath) { # , rscale = "medium" - medium is default for width of prior
+  # make empty matrix to fill
+  bayes_matrix <- matrix(NA, nrow = ncol(data), ncol = ncol(data))
+  colnames(bayes_matrix) <- colnames(data)
+  rownames(bayes_matrix) <- colnames(data)
+
+  # estimate bayes factors and fill matrix
+  for (i in 1:(ncol(data) - 1)) {
+    for (j in (i + 1):ncol(data)) {
+      
+      # first for this correlation data pair remove NAs
+      pair_data <- data[, c(i, j)][complete.cases(data[, c(i, j)]), ]
+      # estimate bayes factors and fill matrix
+      bf <- correlationBF(pair_data[[1]], pair_data[[2]]) #, rscale = rscale
+      bf_10 <- extractBF(bf)$bf  # BF10
+      if (bayes_factor == 'alternative') {
+        bayes_matrix[i, j] <- as.numeric(bf_10)
+        bayes_matrix[j, i] <- as.numeric(bf_10) 
+      }
+      else if (bayes_factor == 'null') {
+        bf_01     <- 1 / bf_10 # BF01 
+        bayes_matrix[i, j] <- bf_01
+        bayes_matrix[j, i] <- bf_01
+      }
+    }
+  }
+  diag(bayes_matrix) <- NA # Diagonal is not applicable
+  # Mask the lower triangle
+  #bayes_matrix[lower.tri(bayes_matrix)] <- NA
+
+  colourpalette <- colorRampPalette(brewer.pal(9, "PuBu"))
+  
+  cp1 <- ggcorrplot(bayes_matrix, hc.order = FALSE, method = "square", 
+  #lab= TRUE, # labels
+  #lab_size = 1,
+  #digits = 2,
+  type = 'lower',
+  outline.col = "black",
+  ggtheme = ggplot2::theme_minimal,
+  tl.cex = 6,
+  ) +
+  scale_fill_gradientn(
+    colors = c("#f3e8ff", colourpalette(100)),
+    #colors = colourpalette <- colourpalette(100),
+    values = scales::rescale(c(0, 1, max(bayes_matrix, na.rm = TRUE))),
+    #limits = c(0, max(bayes_matrix+1, na.rm = TRUE)), 
+    name = "Bayes Factor 01",
+    na.value = "lightgrey"  # Set a custom color for NA values
+  ) +
+  scale_y_discrete(position='right') +
+  theme(
+  plot.title = element_blank(),        # Remove the main title
+  plot.subtitle = element_blank(),     # Remove subtitle
+  axis.title.x = element_blank(),      # Remove x-axis title
+  axis.title.y = element_blank(),      # Remove y-axis title
+  panel.grid.major = element_blank(),  # Remove major grid lines
+  panel.grid.minor = element_blank(),   # Remove minor grid lines
+  plot.margin = unit(c(2, 2, 2, 2), "cm"),
+  axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 6), #
+  axis.text.y = element_text(size = 6)
+  )
+  
+  png(filename = savepath, res = 300, units = "cm", width = 16, height = 15) 
+  print(cp1)
+  dev.off()
+  #return(bayes_matrix)
+}
+
+
+scatterplot_gg <- function(cdat, yvar, xvar, colour) {
+  
+  corrdata <- data.frame(apply(cdat, 2, rank))
+  pval_fdr <- psych::corr.test(cdat, method = "spearman", adjust = "fdr")$p
+  rval_fdr <- psych::corr.test(cdat, method = "spearman", adjust = "fdr")$r
+
+    if (pval_fdr[xvar,yvar] < 0.001) {
+      pval = '<.001'
+    } else {
+      pval = round(pval_fdr[xvar,yvar], 3)
+    }
+  
+  # Remove rows with missing values in xvar or yvar before plotting
+  cdat <- cdat[!is.na(cdat[[xvar]]) & !is.na(cdat[[yvar]]), ]
+
+  ggplot(cdat, aes(y= !! sym(yvar), x= !! sym(xvar))) + 
+    geom_point(color=colour, alpha=0.5, size = 3) +
+    geom_smooth(method=lm , color="#909086", fill="#5d9fcc" , se=TRUE) +
+    theme_classic() +
+    ggtitle(paste("rs =", round(rval_fdr[xvar,yvar], 3), ", pFDR =", pval))+ 
+    theme(plot.title = element_text(size = 19, face = "bold"), 
+          axis.title = element_text(size = 20), 
+          axis.text = element_text(size = 20),
+          axis.title.x = element_text(margin = margin(t = 10)), # Add space above x-axis label
+          axis.title.y = element_text(margin = margin(r = 10))  # Add space to the right of y-axis label)
+    )
+}
+
+# partial correlation function
+cormatrix_partial <- function(cordata, covariates, title, subtitle, savepath) {
+  # Identify the variables of interest
+  vars_of_interest <- setdiff(names(cordata), covariates)
+  
+  # Initialize matrices for correlations and p-values
+  n_vars <- length(vars_of_interest)
+  r_matrix <- matrix(NA, n_vars, n_vars, dimnames = list(vars_of_interest, vars_of_interest))
+  p_matrix <- matrix(NA, n_vars, n_vars, dimnames = list(vars_of_interest, vars_of_interest))
+  
+  # Loop through variable pairs to compute pairwise correlations and p-values
+  for (i in seq_along(vars_of_interest)) {
+    for (j in seq_along(vars_of_interest)) {
+      if (i != j) {
+        # Subset data for the two variables and covariates
+        pair_data <- cordata[, c(vars_of_interest[i], vars_of_interest[j], covariates)]
+        pair_data <- pair_data[complete.cases(pair_data), ] # remove missing data for this pair
+        
+        # Ensure enough rows for computation
+        if (nrow(pair_data) > length(covariates) + 2) {
+          # Compute partial correlation
+          result <- pcor.test(pair_data[ ,vars_of_interest[i]], pair_data[ ,vars_of_interest[j]], pair_data[ ,covariates], method = "spearman")
+          r_matrix[i, j] <- result$estimate
+          p_matrix[i, j] <- result$p.value
+          
+        }
+      }
+    }
+  }
+  
+  # Generate the plot
+  cp1 <- ggcorrplot(r_matrix, p.mat = p_matrix, hc.order = FALSE,
+                    type = 'lower', insig = 'blank', method = "square", 
+                    sig.level = 0.05, outline.col = "black",
+                    ggtheme = ggplot2::theme_minimal(),
+                    tl.cex = 8,
+                    colors = c("#4a6fe3", "white", "#d33f6a")) + #c("#6D9EC1", "white", "#EA5F21FF")) +
+    geom_hline(yintercept = n_vars + 0.5, linetype = 3, size = 1) +
+    geom_vline(xintercept = 0.5, linetype = 3, size = 1) +
+    geom_abline(intercept = 0, slope = 1, linetype = 3, size = 1) +
+    ggtitle(title) +
+    labs(subtitle = subtitle)
+  
+  # Save the plot
+  png(filename = savepath, res = 300, units = "cm", width = 15, height = 15) 
+  print(cp1)
+  dev.off()
+  
+  # Return correlation and p-value matrices
+  return(list(cor_matrix = r_matrix, p_matrix = p_matrix))
+}
+
+```
+
+
+# MAIA x Intero-task Correlations & Null Bayes Factors
+```{r}
+
+# Just MAIA - with hierarchical intero
+colnames(alldata) <- gsub("_", ".", colnames(alldata)) # change _ to . in colnames
+cols = c("RRST.conf", "RRST.slope", "RRST.thresh", "mratio.rrst", "HRD.conf", "HRD.slope", "HRD.absthresh", "mratio.hrd", 'maia.notice', 'maia.ndistract', 'maia.nworry', 'maia.attnReg', 'maia.EmoAware', 'maia.SelfRef', 'maia.listen', 'maia.trust')
+corrdata <- alldata[ ,cols]#[complete.cases(alldata[, cols]),] # select cols 
+colnames(corrdata) <- c("RRST Conf", "RRST Slope", "RRST Thresh", "RRST MRatio", "HRDT Conf", "HRDT Slope", "HRDT Thresh", "HRDT MRatio", 'MAIA Notice', 'MAIA NotDistract', 'MAIA NotWorry', 'MAIA AttenReg', 'MAIA EmotAware', 'MAIA SelfReg', 'MAIA Listen', 'MAIA Trust')
+cormatrix_full(corrdata, "MAIA", "Intero & MAIA Correlations", "~/Git/InteroMentalHealth/figures/Intero_correlations/corr_MAIA_Intero_full_.png")
+cormatrix_selected(corrdata, "Intero", "Psych", 8, 8, "~/Git/InteroMentalHealth/figures/Intero_correlations/corr_MAIA_Intero.png")
+bayes_factor_matrix(corrdata, 'null', "~/Git/InteroMentalHealth/figures/Intero_correlations/Bayes_01/Bayes01corr_MAIA_Intero.png")
+
+
+pval_fdr <- round(psych::corr.test(corrdata, method = "spearman", adjust = "fdr")$p,3)
+rval_fdr <- round(psych::corr.test(corrdata, method = "spearman", adjust = "fdr")$r, 3)
+
+
+```
+
+
+# Psych x Intero/MAIA correlations & Null Bayes Factors
+```{r}
+
+# Select ALL levels of Multi Psych EFA factors with hierarchical intero
+cols = c("RRST.conf", "RRST.slope", "RRST.thresh", "mratio.rrst", "HRD.conf", "HRD.slope", "HRD.absthresh", "mratio.hrd", "multiEFA.l2.Negative Mental Health", "multiEFA.l2.Anxiety & ADHD", "multiEFA.l1.Social Anxiety", "multiEFA.l1.Happiness/Self-Esteem", "multiEFA.l1.Insomnia/Fatigue", "multiEFA.l1.Inattentiveness", "multiEFA.l1.Depression", "multiEFA.l1.Anxiety", "multiEFA.l1.Restlessness", "multiEFA.l1.Stress", "multiEFA.l1.Autism", "multiEFA.l1.Somatic", "multiEFA.l1.Impulsivity")
+corrdata <- alldata[ ,cols]#[complete.cases(alldata[, cols]),] # select cols 
+colnames(corrdata) <- c("RRST Conf", "RRST Slope", "RRST Thresh", "RRST MRatio", "HRDT Conf", "HRDT Slope", "HRDT Thresh", "HRDT MRatio", "<b>Affective Symptoms</b>", "<b>ADHD & Somatic</b>", "Social Anxiety", "Self-Confidence", "Sleep", "Inattentiveness", "Depression", "Negative Thoughts", "Restlessness", "Stress", "Autism", "Somatic", "Impulsivity")
+cormatrix_full(corrdata, "Multi-level Psych EFA", "Intero & Psych Correlations", "~/Git/InteroMentalHealth/figures/Intero_correlations/corr_multiEFAFULL_Intero_full_.png")
+cormatrix_selected(corrdata, "Intero", "Psych", 8, 11, "~/Git/InteroMentalHealth/figures/Intero_correlations/corr_multiEFAFULL_Intero.png")
+bayes_factor_matrix(corrdata, 'null', "~/Git/InteroMentalHealth/figures/Intero_correlations/Bayes_01/Bayes01corr_multiEFAFULL_Intero_.png")
+
+
+# Select  ALL levels of Multi Psych EFA factors with MAIA
+cols = c('maia.notice', 'maia.ndistract', 'maia.nworry', 'maia.attnReg', 'maia.EmoAware', 'maia.SelfRef', 'maia.listen', 'maia.trust',  "multiEFA.l2.Negative Mental Health", "multiEFA.l2.Anxiety & ADHD", "multiEFA.l1.Social Anxiety", "multiEFA.l1.Happiness/Self-Esteem", "multiEFA.l1.Insomnia/Fatigue", "multiEFA.l1.Inattentiveness", "multiEFA.l1.Depression", "multiEFA.l1.Anxiety", "multiEFA.l1.Restlessness", "multiEFA.l1.Stress", "multiEFA.l1.Autism", "multiEFA.l1.Somatic", "multiEFA.l1.Impulsivity")
+corrdata <- alldata[ ,cols]#[complete.cases(alldata[, cols]),] # select cols 
+colnames(corrdata) <- c('MAIA Notice', 'MAIA NotDistract', 'MAIA NotWorry', 'MAIA AttenReg', 'MAIA EmotAware', 'MAIA SelfReg', 'MAIA Listen', 'MAIA Trust', "<b>Affective Symptoms</b>", "<b>ADHD & Somatic</b>", "Social Anxiety", "Self-Confidence", "Sleep", "Inattentiveness", "Depression", "Negative Thoughts", "Restlessness", "Stress", "Autism", "Somatic", "Impulsivity")
+cormatrix_full(corrdata, "Multi-level Psych EFA", "MAIA & Psych Correlations", "~/Git/InteroMentalHealth/figures/Intero_correlations/corr_multiEFAFULL_MAIA_full_.png")
+cormatrix_selected(corrdata, "Intero", "Psych", 8, 11, "~/Git/InteroMentalHealth/figures/Intero_correlations/corr_multiEFAFULL_MAIA.png")
+bayes_factor_matrix(corrdata, 'null', "~/Git/InteroMentalHealth/figures/Intero_correlations/Bayes_01/MAIA/Bayes01corr_multiEFAFULL_MAIA.png")
+
+#pval_fdr <- round(psych::corr.test(corrdata, method = "spearman", adjust = "fdr")$p,3)
+#rval_fdr <- round(psych::corr.test(corrdata, method = "spearman", adjust = "fdr")$r, 3)
+
+```
+
+
+# MAIA (mean score) figures
+```{r}
+# Select overall MAIA score with all mental health 
+cols = c("maia.full.mean", "multiEFA.l2.Negative Mental Health", "multiEFA.l2.Anxiety & ADHD", "multiEFA.l1.Social Anxiety", "multiEFA.l1.Happiness/Self-Esteem", "multiEFA.l1.Insomnia/Fatigue", "multiEFA.l1.Inattentiveness", "multiEFA.l1.Depression", "multiEFA.l1.Anxiety", "multiEFA.l1.Restlessness", "multiEFA.l1.Stress", "multiEFA.l1.Autism", "multiEFA.l1.Somatic", "multiEFA.l1.Impulsivity")
+corrdata <- alldata[ ,cols]#[complete.cases(alldata[, cols]),] # select cols 
+colnames(corrdata) <- c("MAIA Mean", "<b>Affective Symptoms</b>", "<b>ADHD & Somatic</b>", "Social Anxiety", "Self-Confidence", "Sleep", "Inattentiveness", "Depression", "Negative Thoughts", "Restlessness", "Stress", "Autism", "Somatic", "Impulsivity")
+cormatrix_full(corrdata, "Multi Level Psych EFA", "MAIA & Psych Correlations", "~/Git/InteroMentalHealth/figures/Intero_correlations/MAIA/corr_multiEFA_MAIAmean_full.png")
+cormatrix_selected(corrdata, "Intero", "Psych", 8, 2, "~/Git/InteroMentalHealth/figures/Intero_correlations/MAIA/corr_multiEFA_MAIAmean.png")
+bayes_factor_matrix(corrdata, 'null', "~/Git/InteroMentalHealth/figures/Intero_correlations/Bayes_01/MAIA/Bayes01corr_multiEFA_MAIAmean_text.png")
+
+# # scatterplots 
+p1 = scatterplot_gg(corrdata, 'Affective Symptoms', 'MAIA Mean', "#177ab4")
+p1
+ggsave("~/Git/InteroMentalHealth/figures/Intero_correlations/scatter_NMH_MAIA_blue.png", height = 8, width = 6, dpi = 300, units = "in")
+
+# colnames(corrdata) <- c('MAIA Notice', 'MAIA NotDistract', 'MAIA NotWorry', 'MAIA AttenReg', 'MAIA EmotAware', 'MAIA SelfReg', 'MAIA Listen', 'MAIA Trust', "Affective Symptoms", "ADHD & Somatic", "Social Anxiety", "Self-Confidence", "Sleep", "Inattentiveness", "Depression", "Negative Thoughts", "Restlessness", "Stress", "Autism", "Somatic", "Impulsivity")
+# p2 = scatterplot_gg(corrdata, 'Affective Symptoms', 'MAIA Trust', "#177ab4")
+# p2
+# ggsave("~/Git/InteroMentalHealth/figures/Intero_correlations/scatter_NMH_MAIATrusting.png", height = 8, width = 5, dpi = 300, units = "in")
+
+```
+
+
+# HRD extero corr with Psych multiEFA & maia
+```{r}
+
+# Select HRDextero & ALL levels of Multi Psych EFA factors & MAIA
+cols = c("HRDextero.conf", "HRDextero.slope", "HRDextero.absthresh", "mratio.extero", 'maia.notice', 'maia.ndistract', 'maia.nworry', 'maia.attnReg', 'maia.EmoAware', 'maia.SelfRef', 'maia.listen', 'maia.trust',  "multiEFA.l2.Negative Mental Health", "multiEFA.l2.Anxiety & ADHD", "multiEFA.l1.Social Anxiety", "multiEFA.l1.Happiness/Self-Esteem", "multiEFA.l1.Insomnia/Fatigue", "multiEFA.l1.Inattentiveness", "multiEFA.l1.Depression", "multiEFA.l1.Anxiety", "multiEFA.l1.Restlessness", "multiEFA.l1.Stress", "multiEFA.l1.Autism", "multiEFA.l1.Somatic", "multiEFA.l1.Impulsivity")
+corrdata <- alldata[ ,cols]#[complete.cases(alldata[, cols]),] # select cols 
+colnames(corrdata) <- c("HRDTextero Conf", "HRDTextero Slope", "HRDTextero Thresh", "HRDTextero MRatio", 'MAIA Notice', 'MAIA NotDistract', 'MAIA NotWorry', 'MAIA AttenReg', 'MAIA EmotAware', 'MAIA SelfReg', 'MAIA Listen', 'MAIA Trust', "<b>Affective Symptoms</b>", "<b>ADHD & Somatic</b>", "Social Anxiety", "Self-Confidence", "Sleep", "Inattentiveness", "Depression", "Negative Thoughts", "Restlessness", "Stress", "Autism", "Somatic", "Impulsivity")
+cormatrix_full(corrdata, "HRD Extero Correlations", "HRD Extero, MAIA, & Multi-level Psych EFA ", "~/Git/InteroMentalHealth/figures/Extero_correlations/corr_HRDextero_multiEFAFULL_MAIA_full_.png")
+cormatrix_selected(corrdata, "Extero", "Maia & Psych", 4, 19, "~/Git/InteroMentalHealth/figures/Extero_correlations/corr_HRDextero_multiEFAFULL_MAIA.png")
+bayes_factor_matrix(corrdata, 'null', "~/Git/InteroMentalHealth/figures/Extero_correlations/Bayes01corr_HRDextero_multiEFAFULL_MAIA_.png")
+
+```
+
+
+# Partial correlation matrices controlling for age, gender, bmi
+```{r}
+        
+# Select ALL levels of Multi Psych EFA factors with hierarchical intero
+cols = c("age", "gender", "bmi", "RRST.conf", "RRST.slope", "RRST.thresh", "mratio.rrst", "HRD.conf", "HRD.slope", "HRD.absthresh", "mratio.hrd", "multiEFA.l2.Negative Mental Health", "multiEFA.l2.Anxiety & ADHD", "multiEFA.l1.Social Anxiety", "multiEFA.l1.Happiness/Self-Esteem", "multiEFA.l1.Insomnia/Fatigue", "multiEFA.l1.Inattentiveness", "multiEFA.l1.Depression", "multiEFA.l1.Anxiety", "multiEFA.l1.Restlessness", "multiEFA.l1.Stress", "multiEFA.l1.Autism", "multiEFA.l1.Somatic", "multiEFA.l1.Impulsivity")
+corrdata <- alldata[ ,cols]#[complete.cases(alldata[, cols]),] # select cols 
+colnames(corrdata) <- c("Age", "Gender", "BMI", "RRST Conf", "RRST Slope", "RRST Thresh", "RRST MRatio", "HRDT Conf", "HRDT Slope", "HRDT Thresh", "HRDT MRatio", "<b>Affective Symptoms</b>", "<b>ADHD & Somatic</b>", "Social Anxiety", "Self-Confidence", "Sleep", "Inattentiveness", "Depression", "Negative Thoughts", "Restlessness", "Stress", "Autism", "Somatic", "Impulsivity")
+
+# Run the function
+partialresults <- cormatrix_partial(
+  cordata = corrdata, 
+  covariates = c("Age", "Gender", "BMI"), 
+  title = "Partial Correlation Matrix", 
+  subtitle = "Controlling for Age, Gender, and BMI", 
+  savepath = "~/Git/InteroMentalHealth/figures/Intero_correlations/partial_corr/partialcorr_multiEFAFULL_Intero.png"
+)
+
+
+
+# Select  ALL levels of Multi Psych EFA factors with MAIA
+cols = c("age", "gender", "bmi", 'maia.notice', 'maia.ndistract', 'maia.nworry', 'maia.attnReg', 'maia.EmoAware', 'maia.SelfRef', 'maia.listen', 'maia.trust',  "multiEFA.l2.Negative Mental Health", "multiEFA.l2.Anxiety & ADHD", "multiEFA.l1.Social Anxiety", "multiEFA.l1.Happiness/Self-Esteem", "multiEFA.l1.Insomnia/Fatigue", "multiEFA.l1.Inattentiveness", "multiEFA.l1.Depression", "multiEFA.l1.Anxiety", "multiEFA.l1.Restlessness", "multiEFA.l1.Stress", "multiEFA.l1.Autism", "multiEFA.l1.Somatic", "multiEFA.l1.Impulsivity")
+corrdata <- alldata[ ,cols]#[complete.cases(alldata[, cols]),] # select cols 
+colnames(corrdata) <- c("Age", "Gender", "BMI", 'MAIA Notice', 'MAIA NotDistract', 'MAIA NotWorry', 'MAIA AttenReg', 'MAIA EmotAware', 'MAIA SelfReg', 'MAIA Listen', 'MAIA Trust', "<b>Affective Symptoms</b>", "<b>ADHD & Somatic</b>", "Social Anxiety", "Self-Confidence", "Sleep", "Inattentiveness", "Depression", "Negative Thoughts", "Restlessness", "Stress", "Autism", "Somatic", "Impulsivity")
+
+# Run the function
+partialresults <- cormatrix_partial(
+  cordata = corrdata, 
+  covariates = c("Age", "Gender", "BMI"), 
+  title = "Partial Correlation Matrix", 
+  subtitle = "Controlling for Age, Gender, and BMI", 
+  savepath = "~/Git/InteroMentalHealth/figures/Intero_correlations/partial_corr/partialcorr_multiEFAFULL_MAIA.png"
+)
+
+
+# Select HRDextero & ALL levels of Multi Psych EFA factors & MAIA
+cols = c("age", "gender", "bmi", "HRDextero.conf", "HRDextero.slope", "HRDextero.absthresh", 'mratio.extero', 'maia.notice', 'maia.ndistract', 'maia.nworry', 'maia.attnReg', 'maia.EmoAware', 'maia.SelfRef', 'maia.listen', 'maia.trust',  "multiEFA.l2.Negative Mental Health", "multiEFA.l2.Anxiety & ADHD", "multiEFA.l1.Social Anxiety", "multiEFA.l1.Happiness/Self-Esteem", "multiEFA.l1.Insomnia/Fatigue", "multiEFA.l1.Inattentiveness", "multiEFA.l1.Depression", "multiEFA.l1.Anxiety", "multiEFA.l1.Restlessness", "multiEFA.l1.Stress", "multiEFA.l1.Autism", "multiEFA.l1.Somatic", "multiEFA.l1.Impulsivity")
+corrdata <- alldata[ ,cols]#[complete.cases(alldata[, cols]),] # select cols 
+colnames(corrdata) <- c("Age", "Gender", "BMI", "HRDTextero Conf", "HRDTextero Slope", "HRDTextero Thresh", 'HRDTextero MRatio', 'MAIA Notice', 'MAIA NotDistract', 'MAIA NotWorry', 'MAIA AttenReg', 'MAIA EmotAware', 'MAIA SelfReg', 'MAIA Listen', 'MAIA Trust', "<b>Affective Symptoms</b>", "<b>ADHD & Somatic</b>", "Social Anxiety", "Self-Confidence", "Sleep", "Inattentiveness", "Depression", "Negative Thoughts", "Restlessness", "Stress", "Autism", "Somatic", "Impulsivity")
+
+# Run the function
+partialresults <- cormatrix_partial(
+  cordata = corrdata, 
+  covariates = c("Age", "Gender", "BMI"), 
+  title = "Partial Correlation Matrix", 
+  subtitle = "Controlling for Age, Gender, and BMI", 
+  savepath = "~/Git/InteroMentalHealth/figures/Intero_correlations/partial_corr/partialcorr_HRDextero_multiEFAFULL_MAIA.png"
+)
+
+
+
+# Just MAIA - with hierarchical intero
+colnames(alldata) <- gsub("_", ".", colnames(alldata)) # change _ to . in colnames
+cols = c("age", "gender", "bmi", "RRST.conf", "RRST.slope", "RRST.thresh", "mratio.rrst", "HRD.conf", "HRD.slope", "HRD.absthresh", "mratio.hrd", 'maia.notice', 'maia.ndistract', 'maia.nworry', 'maia.attnReg', 'maia.EmoAware', 'maia.SelfRef', 'maia.listen', 'maia.trust')
+corrdata <- alldata[ ,cols]#[complete.cases(alldata[, cols]),] # select cols 
+colnames(corrdata) <- c("Age", "Gender", "BMI", "RRST Conf", "RRST Slope", "RRST Thresh", "RRST MRatio", "HRDT Conf", "HRDT Slope", "HRDT Thresh", "HRDT MRatio", 'MAIA Notice', 'MAIA NotDistract', 'MAIA NotWorry', 'MAIA AttenReg', 'MAIA EmotAware', 'MAIA SelfReg', 'MAIA Listen', 'MAIA Trust')
+
+# Run the function
+partialresults <- cormatrix_partial(
+  cordata = corrdata, 
+  covariates = c("Age", "Gender", "BMI"), 
+  title = "Partial Correlation Matrix", 
+  subtitle = "Controlling for Age, Gender, and BMI", 
+  savepath = "~/Git/InteroMentalHealth/figures/Intero_correlations/partial_corr/partialcorr_MAIA_Intero.png"
+)
+
+```
+
+   
+# Demographics
+```{r}
+#alldata <- read.csv("~/Git/InteroMentalHealth/data/alldata.csv")
+# "RRST_conf", "RRST_slope", "RRST_thresh", "HRD_conf", "HRD_slope", "HRD_absthresh")
+cols = c("age", "gender",  "HRD.conf", "HRD.slope", "HRD.absthresh") #,"mratio.hrd","RRST.conf","RRST.slope","RRST.thresh""mratio.rrst") 
+demodata <- alldata[ ,cols] 
+N = colSums(!is.na(demodata))
+demodata <- demodata[complete.cases(demodata), ]
+
+# age
+min_age = min(demodata$age)
+max_age = max(demodata$age)
+median_age = median(demodata$age)
+#gender
+Nfemales = sum(demodata$gender == 1)   
+Nmales = sum(demodata$gender == 2)   
+Nother = sum(demodata$gender == 3)  
+
+```
+
+
+# Descriptive Tables
+```{r}
+# Save Descriptives Table 
+library(flextable)
+
+cols = c("RRST.conf", "RRST.slope", "RRST.thresh", "mratio.rrst", "HRD.conf", "HRD.slope", "HRD.absthresh", "mratio.hrd", "multiEFA.l2.Negative Mental Health", "multiEFA.l2.Anxiety & ADHD", "multiEFA.l1.Social Anxiety", "multiEFA.l1.Happiness/Self-Esteem", "multiEFA.l1.Insomnia/Fatigue", "multiEFA.l1.Inattentiveness", "multiEFA.l1.Depression", "multiEFA.l1.Anxiety", "multiEFA.l1.Restlessness", "multiEFA.l1.Stress", "multiEFA.l1.Autism", "multiEFA.l1.Somatic", "multiEFA.l1.Impulsivity")
+int_data <- alldata[ ,cols]#[complete.cases(alldata[, cols]),] # select cols 
+colnames(int_data) <- c("RRST Conf", "RRST Slope", "RRST Thresh", "RRST MRatio", "HRDT Conf", "HRDT Slope", "HRDT Thresh", "HRDT MRatio", "<b>Affective Symptoms</b>", "<b>ADHD & Somatic</b>", "Social Anxiety", "Self-Confidence", "Sleep", "Inattentiveness", "Depression", "Negative Thoughts", "Restlessness", "Stress", "Autism", "Somatic", "Impulsivity")
+
+desc_stats <- data.frame(
+  Variable = colnames(int_data),
+  N = colSums(!is.na(int_data)),
+  Mean = round(colMeans(int_data, na.rm = TRUE), 3),
+  SD = round(apply(int_data, 2, sd, na.rm = TRUE), 3),
+  #Median = round(apply(int_data, 2, median, na.rm = TRUE), 3),
+  #Range = apply(int_data, 2, function(x) paste0(round(min(x, na.rm = TRUE), 3), " - ", round(max(x, na.rm = TRUE), 3))),
+  CI_95 = apply(int_data, 2, function(x) {
+    x <- na.omit(x)
+    ci <- t.test(x)$conf.int  # Compute 95% CI
+    paste0(round(ci[1], 3), ", ", round(ci[2], 3))
+  })
+)
+
+# Format the table in APA style
+apa_table <- flextable(desc_stats) %>%
+  set_header_labels(Variable = "Variable", Mean = "Mean", SD = "Standard Deviation", CI_95 = "95% CI") %>%
+  autofit()
+
+
+# Print the table
+apa_table
+save_as_docx(apa_table, path = "~/Git/InteroMentalHealth/tables/APA_Descriptives.docx")
+
+
+# Save Descriptives Table  MAIA
+cols = c('maia.notice', 'maia.ndistract', 'maia.nworry', 'maia.attnReg', 'maia.EmoAware', 'maia.SelfRef', 'maia.listen', 'maia.trust')
+corrdata <- alldata[ ,cols]#[complete.cases(alldata[, cols]),] # select cols 
+colnames(corrdata) <- c('MAIA Notice', 'MAIA NDistract', 'MAIA NWorry', 'MAIA AttnReg', 'MAIA EmoAware', 'MAIA SelfRef', 'MAIA Listen', 'MAIA Trust')
+desc_stats <- data.frame(
+  Variable = colnames(corrdata),
+  N = colSums(!is.na(corrdata)), 
+  Mean = round(colMeans(corrdata, na.rm = TRUE), 3),
+  SD = round(apply(corrdata, 2, sd, na.rm = TRUE), 3),
+  #Median = round(apply(corrdata, 2, median, na.rm = TRUE), 3),
+  #Range = apply(corrdata, 2, function(x) paste0(round(min(x, na.rm = TRUE), 3), " - ", round(max(x, na.rm = TRUE), 3)))
+  CI_95 = apply(corrdata, 2, function(x) {
+  x <- na.omit(x)
+  ci <- t.test(x)$conf.int  # Compute 95% CI
+  paste0(round(ci[1], 3), ", ", round(ci[2], 3))
+  })
+)
+# Format the table in APA style
+apa_table <- flextable(desc_stats) %>%
+  set_header_labels(Variable = "Variable", Mean = "Mean", SD = "Standard Deviation") %>%
+  autofit()
+# Print the table
+apa_table
+save_as_docx(apa_table, path = "~/Git/InteroMentalHealth/tables/APA_Descriptives_MAIA.docx")
+
+```
+
+
+# Null scatterplots of intero & mental health
+```{r}
+cols = c("RRST.conf", "RRST.slope", "RRST.thresh", "mratio.rrst", "HRD.conf", "HRD.slope", "HRD.absthresh", "mratio.hrd", "multiEFA.l2.Negative Mental Health", "multiEFA.l2.Anxiety & ADHD", "multiEFA.l1.Social Anxiety", "multiEFA.l1.Happiness/Self-Esteem", "multiEFA.l1.Insomnia/Fatigue", "multiEFA.l1.Inattentiveness", "multiEFA.l1.Depression", "multiEFA.l1.Anxiety", "multiEFA.l1.Restlessness", "multiEFA.l1.Stress", "multiEFA.l1.Autism", "multiEFA.l1.Somatic", "multiEFA.l1.Impulsivity")
+int_data <- alldata[ ,cols]#[complete.cases(alldata[, cols]),] # select cols 
+colnames(int_data) <- c("RRST Conf", "RRST Slope", "RRST Thresh", "RRST MRatio", "HRDT Conf", "HRDT Slope", "HRDT Abs Thresh", "HRDT MRatio", "Affective Symptoms", "ADHD & Somatic", "Social Anxiety", "Self-Confidence", "Sleep", "Inattentiveness", "Depression", "Negative Thoughts", "Restlessness", "Stress", "Autism", "Somatic", "Impulsivity")
+
+library(ggplot2)
+library(ggExtra)
+library(BayesFactor)
+library(psych)
+library(ggpubr)
+
+
+plot_scatter <- function(df, x, y) {
+  df_complete <- df[complete.cases(df[[x]], df[[y]]), ]
+  fit <- lm(df_complete[[y]] ~ df_complete[[x]])
+  preds <- predict(fit, interval = "prediction")
+  df_complete$fit <- preds[, "fit"]
+  df_complete$lwr <- preds[, "lwr"]
+  df_complete$upr <- preds[, "upr"]
+
+  cor_result <- psych::corr.test(df_complete[, c(x, y)], method = "spearman", adjust = "fdr", ci = TRUE)
+  r <- cor_result$r[1, 2]
+  ci_lower <- cor_result$ci[1, "lower"]
+  ci_upper <- cor_result$ci[1, "upper"]
+  p_fdr <- cor_result$p[1, 2]
+
+  bf <- BayesFactor::correlationBF(df_complete[[x]], df_complete[[y]])
+  bf_10 <- exp(bf@bayesFactor$bf)
+  bf_01 <- round(1 / bf_10, 2)
+
+  stat_label <- sprintf("rs = %.2f [%.2f, %.2f], pFDR = %.3f, BF₀₁ = %.2f", r, ci_lower, ci_upper, p_fdr, bf_01)
+
+  p <- ggplot(df_complete, aes(x = .data[[x]], y = .data[[y]])) +
+    geom_point(shape = 21, fill = "#4D9CF5", color = "grey40", size = 2.5, alpha = 0.6) +
+    geom_smooth(method = "lm", se = TRUE, level = 0.95,
+                color = "#6C74DD", fill = "#C5C7EC", linewidth = 1.1) +
+    geom_line(aes(y = lwr), linetype = "dashed", color = "grey50", linewidth = 0.6) +
+    geom_line(aes(y = upr), linetype = "dashed", color = "grey50", linewidth = 0.6) +
+    theme_minimal(base_size = 13) +
+    theme(
+      axis.title.x = element_text(size = 17, margin = margin(t = 5)),
+      axis.title.y = element_text(size = 17, margin = margin(r = 5)),
+      axis.text = element_text(size = 16),
+      plot.margin = margin(t = 20, r = 5, b = 60, l = 5),
+      panel.background = element_rect(fill = "white", color = NA),
+      plot.background = element_rect(fill = "white", color = NA),
+      plot.caption = element_text(size = 13, hjust = 0.5, color = "grey20", margin = margin(t = 10))
+    ) +
+    labs(x = x, y = y, caption = stat_label)
+
+  ggMarginal(p, type = "histogram", fill = "#C5C7EC", color = "grey60", bins = 20)
+}
+
+
+# Plots
+#p1 <- plot_scatter(int_data, "Negative Mental Health", "Anxiety & ADHD") # "Mental Health Grand Factors"
+p2 <- plot_scatter(int_data, "Affective Symptoms", "HRDT Abs Thresh")
+p3 <- plot_scatter(int_data, "Affective Symptoms", "HRDT Slope")
+p4 <- plot_scatter(int_data, "Affective Symptoms", "RRST Thresh")
+p5 <- plot_scatter(int_data, "Affective Symptoms", "RRST Slope")
+p6 <- plot_scatter(int_data, "ADHD & Somatic", "HRDT Abs Thresh")
+p7 <- plot_scatter(int_data, "ADHD & Somatic", "HRDT Slope")
+p8 <- plot_scatter(int_data, "ADHD & Somatic", "RRST Thresh")
+p9 <- plot_scatter(int_data, "ADHD & Somatic", "RRST Slope")
+
+# Arrange them together
+combined <- ggarrange(p2, p4, p6, p8, ncol = 2, nrow = 2) #  p3, p5, p7, p9,
+
+# Save to file
+ggsave("~/Git/InteroMentalHealth/figures/Intero_correlations/MHintero_scatter__.png", combined, width = 12, height = 13, dpi = 300, bg = "white")
+
+```
+
+# Psych sum score correlations
+```{r}
+cols = c("RRST.conf", "RRST.slope", "RRST.thresh", "mratio.rrst", "HRD.conf", "HRD.slope", "HRD.absthresh", "mratio.hrd", 'maia.notice', 'maia.ndistract', 'maia.nworry', 'maia.attnReg', 'maia.EmoAware', 'maia.SelfRef', 'maia.listen', 'maia.trust', 'aq10', 'asrs.a.sum', 'asrs.b.sum', 'mdi', 'phq9', 'phq15', 'pss', 'sias', 'stai.trait')
+corrdata <- alldata[ ,cols]#[complete.cases(alldata[, cols]),] # select cols 
+colnames(corrdata) <- c("RRST Conf", "RRST Slope", "RRST Thresh", "RRST MRatio", "HRDT Conf", "HRDT Slope", "HRDT Thresh", "HRDT MRatio", 'MAIA Notice', 'MAIA NotDistract', 'MAIA NotWorry', 'MAIA AttenReg', 'MAIA EmotAware', 'MAIA SelfReg', 'MAIA Listen', 'MAIA Trust', 'AQ10', 'ASRS.A', 'ASRS.B', 'MDI', 'PHQ9', 'PHQ15', 'PSS', 'SIAS', 'STAI.trait') #"asrs_combined_sum"
+cormatrix_full(corrdata, "Psych Sum Scores", "Intero & Psych Correlations", "~/Git/InteroMentalHealth/figures/Intero_correlations/Psychsumscores_correlations/corr_Psychsumscores_Intero_full.png")
+cormatrix_selected(corrdata, "Intero", "Psych", 16, 8, "~/Git/InteroMentalHealth/figures/Intero_correlations/Psychsumscores_correlations/corr_Psychsumscores_Intero.png")
+bayes_factor_matrix(corrdata, 'null', "~/Git/InteroMentalHealth/figures/Intero_correlations/Psychsumscores_correlations/Bayes01corr_Psychsumscores_Intero_.png")
+
+```
+
+
+# Check if multiple comparisons correction was too conservation
+```{r}
+colnames(corrdata) <- c("RRST Conf", "RRST Slope", "RRST Thresh", "RRST MRatio", "HRDT Conf", "HRDT Slope", "HRDT Thresh", "HRDT MRatio", "Affective Symptoms", "ADHD & Somatic", "Social Anxiety", "Self-Confidence", "Sleep", "Inattentiveness", "Depression", "Negative Thoughts", "Restlessness", "Stress", "Autism", "Somatic", "Impulsivity")
+
+# First uncorrected (selecting only the inter-mentalhealth comparisons of interest)
+ct_uncorr <- psych::corr.test(corrdata, method = "spearman", adjust = "none")
+r <- ct_uncorr$r
+p <- ct_uncorr$p
+sig_intero_psych <- r[1:8, 9:21][ p[1:8, 9:21] < 0.05 ]
+
+summary(sig_intero_psych)
+summary(abs(sig_intero_psych))
+range(sig_intero_psych, na.rm = TRUE)
+
+# FDR correct only those (i.e., not including mentalhealth with itself)
+ct <- psych::corr.test(corrdata, method = "spearman", adjust = "none")
+r <- ct$r[1:8, 9:21]
+p <- ct$p[1:8, 9:21]
+
+p_fdr <- p.adjust(p, method = "fdr")
+
+summary(r[p_fdr < 0.05])
+summary(abs(r[p_fdr < 0.05]))
+range(r[p_fdr < 0.05], na.rm = TRUE)
+
+
+ggcorrplot(r, hc.order = FALSE, p.mat = p_fdr,
+           type = "full", method = "square",
+           insig = "blank", sig.level = 0.05,
+           outline.col = "black",
+           ggtheme = ggplot2::theme_minimal,
+           tl.cex = 8,
+           colors = c("#4a6fe3", "white", "#d33f6a")) +
+  ggtitle("Intero × Mental Health (FDR within test family)") +
+  theme(
+    axis.text.x = ggtext::element_markdown(angle = 45, hjust = 1),
+    axis.text.y = ggtext::element_markdown()
+  )
+
+# effect size:
+summary(abs(sig_intero_psych))
+range(sig_intero_psych, na.rm = TRUE)
+
+# CIs
+library(psych)
+ci <- psych::r.con(r = sig_intero_psych, n = nrow(corrdata))
+summary(ci)
+
+
+# Bayes
+library(BayesFactor)
+idx_intero <- 1:8
+idx_mh <- 9:21
+
+bf10_num <- function(x, y) {
+  d <- na.omit(data.frame(x = x, y = y))
+  if (nrow(d) < 10) return(NA_real_)
+  bf_obj <- correlationBF(rank(d$x), rank(d$y))
+  extractBF(bf_obj, onlybf = TRUE)  # <- numeric BF10
+}
+
+BF10 <- as.vector(
+  outer(idx_intero, idx_mh,
+        Vectorize(function(i, j)
+          bf10_num(corrdata[[i]], corrdata[[j]])))
+)
+BF01 <- 1 / BF10
+
+summary(BF01)
+mean(BF01 > 1, na.rm = TRUE)
+mean(BF01 > 3, na.rm = TRUE)
+range(BF01, na.rm = TRUE)
+
+
+```
+
+# Task Accuracy correlations
+```{r}
+
+# Select ALL levels of Multi Psych EFA factors with hierarchical intero
+cols = c("RRST.accuracy", "HRD.accuracy", "HRDextero.accuracy", "multiEFA.l2.Negative Mental Health", "multiEFA.l2.Anxiety & ADHD", "multiEFA.l1.Social Anxiety", "multiEFA.l1.Happiness/Self-Esteem", "multiEFA.l1.Insomnia/Fatigue", "multiEFA.l1.Inattentiveness", "multiEFA.l1.Depression", "multiEFA.l1.Anxiety", "multiEFA.l1.Restlessness", "multiEFA.l1.Stress", "multiEFA.l1.Autism", "multiEFA.l1.Somatic", "multiEFA.l1.Impulsivity")
+corrdata <- alldata[ ,cols]#[complete.cases(alldata[, cols]),] # select cols 
+colnames(corrdata) <- c("RRST Accuracy", "HRDT Accuracy", "Extero Accuracy", "Affective Symptoms", "ADHD & Somatic", "Social Anxiety", "Self-Confidence", "Sleep", "Inattentiveness", "Depression", "Negative Thoughts", "Restlessness", "Stress", "Autism", "Somatic", "Impulsivity")
+cormatrix_full(corrdata, "Multi-level Psych EFA", "Accuracy & Psych Correlations", "~/Git/InteroMentalHealth/figures/Intero_correlations/corr_multiEFAFULL_InteroAccuracy.png")
+bayes_factor_matrix(corrdata, 'null', "~/Git/InteroMentalHealth/figures/Intero_correlations/Bayes_01/Bayes01corr_multiEFAFULL_InteroAccuracy.png")
+
+```
+
+
