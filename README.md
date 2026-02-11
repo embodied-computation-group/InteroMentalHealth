@@ -64,7 +64,7 @@ Access the preprint here: [https://www.medrxiv.org/content/10.1101/2025.08.25.25
 
 
     **3. Clinical Cut-Off Analyses**:  
-        /InteroMentalHealth/scripts/psych_inputplots_andcutoffs.nb.html
+        /InteroMentalHealth/scripts/psych_inputplots_andcutoffs.Rmd
 
 
     **4. Network Analyses**:  
