@@ -219,6 +219,8 @@ alldata[cols_to_modify] <- lapply(alldata[cols_to_modify], function(x) {
 
 # merge intero & psych communities
 ```{r}
+#community_scores <- read.csv("~/Git/InteroMentalHealth/figures/Network/community_scores.csv")
+
 colnames(alldata) <- gsub("_", ".", colnames(alldata))
 # attach subids to community scores
 subids <- read_csv(here::here("data/PsychEFAs","SubIDs_PsychEFA.csv"))
@@ -455,6 +457,21 @@ cormatrix_full(corrdata, "Psych Community Scores", "Intero & Psych Correlations"
 
 bayes_factor_matrix(corrdata, 'null', "/figures/Network/Bayes01corr_PsychCommunities_Intero.png")
 
+# cor_result <- psych::corr.test(corrdata, method = "spearman", adjust = "fdr", ci = TRUE)
+# var2 <- "Mentalising"
+# var1 <- "HRDT MRatio"
+# ci_row <- "HRDTM-Mntls"
+# 
+# cat(sprintf(
+#   "%s & %s: rs (%d) = %.3f, pFDR = %.3f\n, 95%% CI's = %.3f, %.3f",
+#   var1, var2,
+#   cor_result$n[var1, var2] - 2,
+#   cor_result$r[var1, var2],
+#   cor_result$p[var1, var2],
+#   cor_result$ci[ci_row, "lower"],
+#   cor_result$ci[ci_row, "upper"]
+# ))
+
 ```
 
 
@@ -471,8 +488,8 @@ nodes_psy  <- colnames(corrdata)[1:8]   # RRST/HRDT
 nodes_maia <- colnames(corrdata)[9:16]  # MAIA
 nodes_mh   <- colnames(corrdata)[17:25] # MH domains
 
-grp <- factor(c(rep("Interoceptive Psychophysics", length(nodes_psy)),
-                rep("Interoceptive Sensibility",   length(nodes_maia)),
+grp <- factor(c(rep("Interoceptive Psychophysics (HRDT/RRST)", length(nodes_psy)),
+                rep("Interoceptive Sensibility (MAIA)",   length(nodes_maia)),
                 rep("Mental Health Symptoms",       length(nodes_mh))))
 
 # Plot
@@ -491,7 +508,7 @@ labs <- gsub("HRDT", "H.", labs)
 labs <- gsub("MAIA", "", labs)
 labs[17:25] <- c("Confidence", "Restless", "Inattention", "Mentalising", "Impulsivity", "Depression", "Somatic", "Stress", "Social Anxiety")
 
-png("/figures/Network/JointNetwork_Intero_Psych.png",
+png("~/Git/InteroMentalHealth/figures/Network/JointNetwork_Intero_Psych2.png",
     3600, 3000, res=300)
 set.seed(123)
 qgraph(Net$graph, layout="spring",

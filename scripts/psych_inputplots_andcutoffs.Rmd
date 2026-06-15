@@ -231,6 +231,26 @@ alldata <- alldata[ ,cols]
 # get common subjects
 alldata <- na.omit(alldata)
 
+
+
+
+# Check % overlap of HRDT sample in RRST
+alldata <- read_csv("~/Git/InteroMentalHealth/data/alldata.csv")
+colnames(alldata) <- gsub("_", ".", colnames(alldata)) 
+
+# HRD sample
+hrd <- alldata[, c("participant.id", "age", "gender", "HRD.slope", "multiEFA.l2.Negative Mental Health")]
+hrd <- na.omit(hrd)
+# RRST sample
+rrst <- alldata[, c("participant.id", "age", "gender", "RRST.slope", "multiEFA.l2.Negative Mental Health")]
+rrst <- na.omit(rrst)
+
+# Overlap (participants in both)
+overlap_ids <- intersect(hrd$participant.id, rrst$participant.id)
+# Proportion overlap
+length(overlap_ids) / nrow(rrst)   # % of RRST also in HRD
+length(overlap_ids) / nrow(hrd)    # % of HRD also in RRST
+
 ```
 
 # Count cut-off mental health categories
