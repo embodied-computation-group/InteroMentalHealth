@@ -5,7 +5,7 @@ from matplotlib.colors import LinearSegmentedColormap, Normalize
 import numpy as np
 
 # Load data
-df = pd.read_csv("/home/leah/Git/InteroMentalHealth/data/semantic_similarity.csv", names=["Scale", "Similarity"])
+df = pd.read_csv("/home/leah/Git/InteroMentalHealth/data/semantic_similarity/semantic_similarity_ALL.csv", names=["Scale", "Similarity"])
 
 # Clean up labels (optional)
 df['Label'] = df['Scale'].str.replace(r"\(.*?\)", "", regex=True).str.strip()
@@ -30,7 +30,7 @@ def color_by_similarity(word, font_size, position, orientation, font_path, rando
     )
 
 # Build word cloud
-wc = WordCloud(width=1200, height=600, background_color="white").generate_from_frequencies(frequencies)
+wc = WordCloud(width=1200, height=600, background_color="white", random_state=13).generate_from_frequencies(frequencies)
 
 # Recolor with value-based function
 wc.recolor(color_func=color_by_similarity)
@@ -53,5 +53,5 @@ cbar.ax.tick_params(labelsize=12)
 plt.tight_layout()
 plt.show()
 
-fig.savefig("/home/leah/Git/InteroMentalHealth/figures/Semantic_similarity_maia/semantic_wordcloud_colorbar.png", dpi=300)
+fig.savefig("/home/leah/Git/InteroMentalHealth/figures/Semantic_similarity_maia/semantic_wordcloud_colorbar.pdf", dpi=300)
 

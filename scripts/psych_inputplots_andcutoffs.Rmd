@@ -43,7 +43,8 @@ data <- data %>%
   ungroup()
 
 # Set up the PNG device to save the image
-png("~/Git/InteroMentalHealth/figures/TaskFigs/surveyscores_summary_withmaia_notext.png", width = 1600, height = 1600)  # 
+#png("~/Git/InteroMentalHealth/figures/TaskFigs/surveyscores_summary_withmaia_notext.png", width = 1600, height = 1600)  # 
+svg("~/Git/InteroMentalHealth/figures/TaskFigs/surveyscores_summary_withmaia_notext.svg", width = 10, height = 10)
 
 circos.clear()
 
@@ -185,7 +186,8 @@ plotgender <- ggplot(alldata, aes(x = gender)) +
 
 # Arrange the plots side by side
 combined_plot <- grid.arrange(plotage, plotgender, ncol = 2, widths = c(2.25, 1.25))
-ggsave("~/Git/InteroMentalHealth/figures/TaskFigs/age_gender_distr.png", combined_plot, width = 12, height = 6)
+#ggsave("~/Git/InteroMentalHealth/figures/TaskFigs/age_gender_distr.png", combined_plot, width = 12, height = 6)
+ggsave("~/Git/InteroMentalHealth/figures/TaskFigs/age_gender_distr.pdf", combined_plot, width = 12, height = 6)
 
 # Demographics of N=500 sample for Mental Health EFA
 # age

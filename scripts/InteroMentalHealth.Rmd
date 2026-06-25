@@ -59,29 +59,68 @@ for (colname in names(corrdata)) {
 
 # Correlation matrix & scatterplot functions
 ```{r}
+# cormatrix_full <- function(cordata, title, subtitle, savepath) {
+#   pval_fdr <- psych::corr.test(cordata, method = "spearman", adjust = "fdr")$p 
+#   rval_fdr <- psych::corr.test(cordata, method = "spearman", adjust = "fdr")$r
+# 
+#   cp1 <- ggcorrplot(rval_fdr,  hc.order=FALSE, p.mat = pval_fdr,
+#              type='full',  method = "square", insig='blank', sig.level = 0.05,  
+#              outline.col = "black",
+#              #lab = TRUE,  # Add correlation values
+#              #lab_col = "black",               # Label color
+#              #lab_size = 1.5,                    # Label size
+#              #digits = 2, # 2 decimal points
+#              ggtheme = ggplot2::theme_minimal,
+#              tl.cex = 8,
+#             colors = c("#4a6fe3", "white", "#d33f6a")) + 
+#     ggtitle(title) +
+#     labs(subtitle = subtitle)+
+#     theme(
+#       axis.text.x = ggtext::element_markdown(angle = 45, hjust = 1),
+#       axis.text.y = ggtext::element_markdown()
+#     )
+#   
+#   cairo_pdf(savepath, width = 15/2.54, height = 15/2.54) #pdf(savepath, width = 15/2.54, height = 15/2.54)
+#   #png(filename = savepath, res = 300, units = "cm", width = 15, height = 15) 
+#   print(cp1)
+#   dev.off()
+# }
 
-cormatrix_full <- function(cordata, title, subtitle, savepath) {
+cormatrix_full <- function(cordata, title, subtitle, savepath, bold_labels = NULL) {
+  library(showtext)
+  showtext_auto()
   pval_fdr <- psych::corr.test(cordata, method = "spearman", adjust = "fdr")$p 
   rval_fdr <- psych::corr.test(cordata, method = "spearman", adjust = "fdr")$r
-
-  cp1 <- ggcorrplot(rval_fdr,  hc.order=FALSE, p.mat = pval_fdr,
-             type='full',  method = "square", insig='blank', sig.level = 0.05,  
+  
+  label_names <- colnames(cordata)
+  n <- length(label_names)
+  
+  # x-axis: same order as colnames
+  label_faces_x <- ifelse(label_names %in% bold_labels, "bold", "plain")
+  
+  # y-axis: ggcorrplot reverses AND shifts - find correct positions empirically
+  # bold positions on x: which(label_names %in% bold_labels)
+  # convert to y positions: n + 1 - x_pos, then adjust offset of +2
+  x_bold_pos <- which(label_names %in% bold_labels)
+  y_bold_pos <- n + 1 - x_bold_pos - 2  # offset of 2 found empirically
+  
+  label_faces_y <- rep("plain", n)
+  label_faces_y[y_bold_pos] <- "bold"
+  
+  cp1 <- ggcorrplot(rval_fdr, hc.order=FALSE, p.mat = pval_fdr,
+             type='full', method = "square", insig='blank', sig.level = 0.05,  
              outline.col = "black",
-             #lab = TRUE,  # Add correlation values
-             #lab_col = "black",               # Label color
-             #lab_size = 1.5,                    # Label size
-             #digits = 2, # 2 decimal points
              ggtheme = ggplot2::theme_minimal,
              tl.cex = 8,
-            colors = c("#4a6fe3", "white", "#d33f6a")) + 
+             colors = c("#4a6fe3", "white", "#d33f6a")) + 
     ggtitle(title) +
-    labs(subtitle = subtitle)+
+    labs(subtitle = subtitle) +
     theme(
-      axis.text.x = ggtext::element_markdown(angle = 45, hjust = 1),
-      axis.text.y = ggtext::element_markdown()
+      axis.text.x = element_text(angle = 45, hjust = 1, face = label_faces_x),
+      axis.text.y = element_text(face = label_faces_y)
     )
   
-  png(filename = savepath, res = 300, units = "cm", width = 15, height = 15) 
+  cairo_pdf(savepath, width = 15/2.54, height = 15/2.54)
   print(cp1)
   dev.off()
 }
@@ -112,75 +151,148 @@ cormatrix_selected <- function(cordata, xlabel, ylabel, xnum, ynum, savepath) {
   dev.off()
 }
 
-
-# Bayesian corplot: Function to compute a matrix of Bayes Factors for all pairwise correlations
-bayes_factor_matrix <- function(data, bayes_factor, savepath) { # , rscale = "medium" - medium is default for width of prior
-  # make empty matrix to fill
+bayes_factor_matrix <- function(data, bayes_factor, savepath, bold_labels = NULL) {
+  library(showtext)
+  showtext_auto()
+  
   bayes_matrix <- matrix(NA, nrow = ncol(data), ncol = ncol(data))
   colnames(bayes_matrix) <- colnames(data)
   rownames(bayes_matrix) <- colnames(data)
-
-  # estimate bayes factors and fill matrix
+  
   for (i in 1:(ncol(data) - 1)) {
     for (j in (i + 1):ncol(data)) {
-      
-      # first for this correlation data pair remove NAs
       pair_data <- data[, c(i, j)][complete.cases(data[, c(i, j)]), ]
-      # estimate bayes factors and fill matrix
-      bf <- correlationBF(pair_data[[1]], pair_data[[2]]) #, rscale = rscale
-      bf_10 <- extractBF(bf)$bf  # BF10
+      bf <- correlationBF(pair_data[[1]], pair_data[[2]])
+      bf_10 <- extractBF(bf)$bf
       if (bayes_factor == 'alternative') {
         bayes_matrix[i, j] <- as.numeric(bf_10)
         bayes_matrix[j, i] <- as.numeric(bf_10) 
-      }
-      else if (bayes_factor == 'null') {
-        bf_01     <- 1 / bf_10 # BF01 
+      } else if (bayes_factor == 'null') {
+        bf_01 <- 1 / bf_10
         bayes_matrix[i, j] <- bf_01
         bayes_matrix[j, i] <- bf_01
       }
     }
   }
-  diag(bayes_matrix) <- NA # Diagonal is not applicable
-  # Mask the lower triangle
-  #bayes_matrix[lower.tri(bayes_matrix)] <- NA
-
+  diag(bayes_matrix) <- NA
+  print(max(bayes_matrix, na.rm = TRUE))  # check max value
   colourpalette <- colorRampPalette(brewer.pal(9, "PuBu"))
   
-  cp1 <- ggcorrplot(bayes_matrix, hc.order = FALSE, method = "square", 
-  #lab= TRUE, # labels
-  #lab_size = 1,
-  #digits = 2,
-  type = 'lower',
-  outline.col = "black",
-  ggtheme = ggplot2::theme_minimal,
-  tl.cex = 6,
-  ) +
-  scale_fill_gradientn(
-    colors = c("#f3e8ff", colourpalette(100)),
-    #colors = colourpalette <- colourpalette(100),
-    values = scales::rescale(c(0, 1, max(bayes_matrix, na.rm = TRUE))),
-    #limits = c(0, max(bayes_matrix+1, na.rm = TRUE)), 
-    name = "Bayes Factor 01",
-    na.value = "lightgrey"  # Set a custom color for NA values
-  ) +
-  scale_y_discrete(position='right') +
-  theme(
-  plot.title = element_blank(),        # Remove the main title
-  plot.subtitle = element_blank(),     # Remove subtitle
-  axis.title.x = element_blank(),      # Remove x-axis title
-  axis.title.y = element_blank(),      # Remove y-axis title
-  panel.grid.major = element_blank(),  # Remove major grid lines
-  panel.grid.minor = element_blank(),   # Remove minor grid lines
-  plot.margin = unit(c(2, 2, 2, 2), "cm"),
-  axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 6), #
-  axis.text.y = element_text(size = 6)
-  )
+  # Bold label logic
+  label_names <- colnames(data)
+  n <- length(label_names)
   
-  png(filename = savepath, res = 300, units = "cm", width = 16, height = 15) 
+  if (!is.null(bold_labels)) {
+    label_faces_x <- ifelse(label_names %in% bold_labels, "bold", "plain")
+    x_bold_pos <- which(label_names %in% bold_labels)
+    y_bold_pos <- n + 1 - x_bold_pos - 2
+    label_faces_y <- rep("plain", n)
+    label_faces_y[y_bold_pos] <- "bold"
+  } else {
+    label_faces_x <- rep("plain", n)
+    label_faces_y <- rep("plain", n)
+  }
+  
+  cp1 <- ggcorrplot(bayes_matrix, hc.order = FALSE, method = "square", 
+                    type = 'lower',
+                    outline.col = "black",
+                    ggtheme = ggplot2::theme_minimal,
+                    tl.cex = 6) +
+    scale_fill_gradientn(
+      colors = c("#f3e8ff", colourpalette(100)),
+      values = scales::rescale(c(0, 1, max(bayes_matrix, na.rm = TRUE) + 1)),
+      limits = c(0, max(bayes_matrix, na.rm = TRUE) + 1),
+      name = "Bayes Factor 01",
+      na.value = "lightgrey"
+    ) +
+    scale_y_discrete(position = 'right') +
+    theme(
+      plot.title = element_blank(),
+      plot.subtitle = element_blank(),
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      plot.margin = unit(c(2, 2, 2, 2), "cm"),
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 6,
+                                  face = label_faces_x),
+      axis.text.y = element_text(size = 6, face = label_faces_y, hjust = 0)
+    )
+  
+  cairo_pdf(savepath, width = 16/2.54, height = 15/2.54)
   print(cp1)
   dev.off()
-  #return(bayes_matrix)
 }
+
+
+# # Bayesian corplot: Function to compute a matrix of Bayes Factors for all pairwise correlations
+# bayes_factor_matrix <- function(data, bayes_factor, savepath) { # , rscale = "medium" - medium is default for width of prior
+#   # make empty matrix to fill
+#   bayes_matrix <- matrix(NA, nrow = ncol(data), ncol = ncol(data))
+#   colnames(bayes_matrix) <- colnames(data)
+#   rownames(bayes_matrix) <- colnames(data)
+# 
+#   # estimate bayes factors and fill matrix
+#   for (i in 1:(ncol(data) - 1)) {
+#     for (j in (i + 1):ncol(data)) {
+#       
+#       # first for this correlation data pair remove NAs
+#       pair_data <- data[, c(i, j)][complete.cases(data[, c(i, j)]), ]
+#       # estimate bayes factors and fill matrix
+#       bf <- correlationBF(pair_data[[1]], pair_data[[2]]) #, rscale = rscale
+#       bf_10 <- extractBF(bf)$bf  # BF10
+#       if (bayes_factor == 'alternative') {
+#         bayes_matrix[i, j] <- as.numeric(bf_10)
+#         bayes_matrix[j, i] <- as.numeric(bf_10) 
+#       }
+#       else if (bayes_factor == 'null') {
+#         bf_01     <- 1 / bf_10 # BF01 
+#         bayes_matrix[i, j] <- bf_01
+#         bayes_matrix[j, i] <- bf_01
+#       }
+#     }
+#   }
+#   diag(bayes_matrix) <- NA # Diagonal is not applicable
+#   # Mask the lower triangle
+#   #bayes_matrix[lower.tri(bayes_matrix)] <- NA
+# 
+#   colourpalette <- colorRampPalette(brewer.pal(9, "PuBu"))
+#   
+#   cp1 <- ggcorrplot(bayes_matrix, hc.order = FALSE, method = "square", 
+#   #lab= TRUE, # labels
+#   #lab_size = 1,
+#   #digits = 2,
+#   type = 'lower',
+#   outline.col = "black",
+#   ggtheme = ggplot2::theme_minimal,
+#   tl.cex = 6,
+#   ) +
+#   scale_fill_gradientn(
+#     colors = c("#f3e8ff", colourpalette(100)),
+#     #colors = colourpalette <- colourpalette(100),
+#     values = scales::rescale(c(0, 1, max(bayes_matrix, na.rm = TRUE))),
+#     #limits = c(0, max(bayes_matrix+1, na.rm = TRUE)), 
+#     name = "Bayes Factor 01",
+#     na.value = "lightgrey"  # Set a custom color for NA values
+#   ) +
+#   scale_y_discrete(position='right') +
+#   theme(
+#   plot.title = element_blank(),        # Remove the main title
+#   plot.subtitle = element_blank(),     # Remove subtitle
+#   axis.title.x = element_blank(),      # Remove x-axis title
+#   axis.title.y = element_blank(),      # Remove y-axis title
+#   panel.grid.major = element_blank(),  # Remove major grid lines
+#   panel.grid.minor = element_blank(),   # Remove minor grid lines
+#   plot.margin = unit(c(2, 2, 2, 2), "cm"),
+#   axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 6), #
+#   axis.text.y = element_text(size = 6)
+#   )
+#   
+#   png(filename = savepath, res = 300, units = "cm", width = 16, height = 15) 
+#   print(cp1)
+#   dev.off()
+#   #return(bayes_matrix)
+# }
 
 
 scatterplot_gg <- function(cdat, yvar, xvar, colour) {
@@ -309,19 +421,23 @@ rval_fdr <- round(psych::corr.test(corrdata, method = "spearman", adjust = "fdr"
 # Select ALL levels of Multi Psych EFA factors with hierarchical intero
 cols = c("RRST.conf", "RRST.slope", "RRST.thresh", "mratio.rrst", "HRD.conf", "HRD.slope", "HRD.absthresh", "mratio.hrd", "multiEFA.l2.Negative Mental Health", "multiEFA.l2.Anxiety & ADHD", "multiEFA.l1.Social Anxiety", "multiEFA.l1.Happiness/Self-Esteem", "multiEFA.l1.Insomnia/Fatigue", "multiEFA.l1.Inattentiveness", "multiEFA.l1.Depression", "multiEFA.l1.Anxiety", "multiEFA.l1.Restlessness", "multiEFA.l1.Stress", "multiEFA.l1.Autism", "multiEFA.l1.Somatic", "multiEFA.l1.Impulsivity")
 corrdata <- alldata[ ,cols]#[complete.cases(alldata[, cols]),] # select cols 
-colnames(corrdata) <- c("RRST Conf", "RRST Slope", "RRST Thresh", "RRST MRatio", "HRDT Conf", "HRDT Slope", "HRDT Thresh", "HRDT MRatio", "<b>Affective Symptoms</b>", "<b>ADHD & Somatic</b>", "Social Anxiety", "Self-Confidence", "Sleep", "Inattentiveness", "Depression", "Negative Thoughts", "Restlessness", "Stress", "Autism", "Somatic", "Impulsivity")
-cormatrix_full(corrdata, "Multi-level Psych EFA", "Intero & Psych Correlations", "~/Git/InteroMentalHealth/figures/Intero_correlations/corr_multiEFAFULL_Intero_full_.png")
+colnames(corrdata) <- c("RRST Conf", "RRST Slope", "RRST Thresh", "RRST MRatio", "HRDT Conf", "HRDT Slope", "HRDT Thresh", "HRDT MRatio", "Affective Symptoms", "ADHD & Somatic", "Social Anxiety", "Self-Confidence", "Sleep", "Inattentiveness", "Depression", "Negative Thoughts", "Restlessness", "Stress", "Autism", "Somatic", "Impulsivity")
+cormatrix_full(corrdata, "Multi-level Psych EFA", "Intero & Psych Correlations", 
+               "~/Git/InteroMentalHealth/figures/Intero_correlations/corr_multiEFAFULL_Intero_full_.pdf",
+               bold_labels = c("Affective Symptoms", "ADHD & Somatic"))
 cormatrix_selected(corrdata, "Intero", "Psych", 8, 11, "~/Git/InteroMentalHealth/figures/Intero_correlations/corr_multiEFAFULL_Intero.png")
-bayes_factor_matrix(corrdata, 'null', "~/Git/InteroMentalHealth/figures/Intero_correlations/Bayes_01/Bayes01corr_multiEFAFULL_Intero_.png")
+bayes_factor_matrix(corrdata, 'null', 
+                    "~/Git/InteroMentalHealth/figures/Intero_correlations/Bayes_01/Bayes01corr_multiEFAFULL_Intero_.pdf",
+                    bold_labels = c("Affective Symptoms", "ADHD & Somatic"))
 
 
 # Select  ALL levels of Multi Psych EFA factors with MAIA
 cols = c('maia.notice', 'maia.ndistract', 'maia.nworry', 'maia.attnReg', 'maia.EmoAware', 'maia.SelfRef', 'maia.listen', 'maia.trust',  "multiEFA.l2.Negative Mental Health", "multiEFA.l2.Anxiety & ADHD", "multiEFA.l1.Social Anxiety", "multiEFA.l1.Happiness/Self-Esteem", "multiEFA.l1.Insomnia/Fatigue", "multiEFA.l1.Inattentiveness", "multiEFA.l1.Depression", "multiEFA.l1.Anxiety", "multiEFA.l1.Restlessness", "multiEFA.l1.Stress", "multiEFA.l1.Autism", "multiEFA.l1.Somatic", "multiEFA.l1.Impulsivity")
 corrdata <- alldata[ ,cols]#[complete.cases(alldata[, cols]),] # select cols 
-colnames(corrdata) <- c('MAIA Notice', 'MAIA NotDistract', 'MAIA NotWorry', 'MAIA AttenReg', 'MAIA EmotAware', 'MAIA SelfReg', 'MAIA Listen', 'MAIA Trust', "<b>Affective Symptoms</b>", "<b>ADHD & Somatic</b>", "Social Anxiety", "Self-Confidence", "Sleep", "Inattentiveness", "Depression", "Negative Thoughts", "Restlessness", "Stress", "Autism", "Somatic", "Impulsivity")
-cormatrix_full(corrdata, "Multi-level Psych EFA", "MAIA & Psych Correlations", "~/Git/InteroMentalHealth/figures/Intero_correlations/corr_multiEFAFULL_MAIA_full_.png")
+colnames(corrdata) <- c('MAIA Notice', 'MAIA NotDistract', 'MAIA NotWorry', 'MAIA AttenReg', 'MAIA EmotAware', 'MAIA SelfReg', 'MAIA Listen', 'MAIA Trust', "Affective Symptoms", "ADHD & Somatic", "Social Anxiety", "Self-Confidence", "Sleep", "Inattentiveness", "Depression", "Negative Thoughts", "Restlessness", "Stress", "Autism", "Somatic", "Impulsivity")
+cormatrix_full(corrdata, "Multi-level Psych EFA", "MAIA & Psych Correlations", "~/Git/InteroMentalHealth/figures/Intero_correlations/corr_multiEFAFULL_MAIA_full_.pdf", bold_labels = c("Affective Symptoms", "ADHD & Somatic"))
 cormatrix_selected(corrdata, "Intero", "Psych", 8, 11, "~/Git/InteroMentalHealth/figures/Intero_correlations/corr_multiEFAFULL_MAIA.png")
-bayes_factor_matrix(corrdata, 'null', "~/Git/InteroMentalHealth/figures/Intero_correlations/Bayes_01/MAIA/Bayes01corr_multiEFAFULL_MAIA.png")
+bayes_factor_matrix(corrdata, 'null', "~/Git/InteroMentalHealth/figures/Intero_correlations/Bayes_01/Bayes01corr_multiEFAFULL_MAIA.pdf", bold_labels = c("Affective Symptoms", "ADHD & Somatic"))
 
 #pval_fdr <- round(psych::corr.test(corrdata, method = "spearman", adjust = "fdr")$p,3)
 #rval_fdr <- round(psych::corr.test(corrdata, method = "spearman", adjust = "fdr")$r, 3)
@@ -360,11 +476,11 @@ bayes_factor_matrix(corrdata, 'null', "~/Git/InteroMentalHealth/figures/Intero_c
 p1 = scatterplot_gg(corrdata, 'Affective Symptoms', 'MAIA Mean', "#177ab4")
 p1
 ggsave("~/Git/InteroMentalHealth/figures/Intero_correlations/scatter_NMH_MAIA_blue.png", height = 8, width = 6, dpi = 300, units = "in")
-
+# 
 # colnames(corrdata) <- c('MAIA Notice', 'MAIA NotDistract', 'MAIA NotWorry', 'MAIA AttenReg', 'MAIA EmotAware', 'MAIA SelfReg', 'MAIA Listen', 'MAIA Trust', "Affective Symptoms", "ADHD & Somatic", "Social Anxiety", "Self-Confidence", "Sleep", "Inattentiveness", "Depression", "Negative Thoughts", "Restlessness", "Stress", "Autism", "Somatic", "Impulsivity")
 # p2 = scatterplot_gg(corrdata, 'Affective Symptoms', 'MAIA Trust', "#177ab4")
 # p2
-# ggsave("~/Git/InteroMentalHealth/figures/Intero_correlations/scatter_NMH_MAIATrusting.png", height = 8, width = 5, dpi = 300, units = "in")
+# ggsave("~/Git/InteroMentalHealth/figures/Intero_correlations/scatter_NMH_MAIATrusting.pdf", height = 8, width = 5, dpi = 300, units = "in")
 
 ```
 
@@ -606,7 +722,7 @@ p9 <- plot_scatter(int_data, "ADHD & Somatic", "RRST Slope")
 combined <- ggarrange(p2, p4, p6, p8, ncol = 2, nrow = 2) #  p3, p5, p7, p9,
 
 # Save to file
-ggsave("~/Git/InteroMentalHealth/figures/Intero_correlations/MHintero_scatter__.png", combined, width = 12, height = 13, dpi = 300, bg = "white")
+ggsave("~/Git/InteroMentalHealth/figures/Intero_correlations/ScatterPlots/MHintero_scatter__.pdf", combined, width = 12, height = 13, dpi = 300, bg = "white")
 
 ```
 

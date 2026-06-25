@@ -527,7 +527,7 @@ p <- ggplot(long_plot_data, aes(x = factor(Item, levels = unique(Item)), y = Loa
 p
 
 
-ggsave("~/Git/InteroMentalHealth/figures/EFA/Loadings/LoadingsL1_PsychEFAvss_nfact-lower11-higher2__.png", plot = p, width = 40, height = 25, dpi = 300)
+ggsave("~/Git/InteroMentalHealth/figures/EFA/Loadings/LoadingsL1_PsychEFAvss_nfact-lower11-higher2_.pdf", plot = p, width = 40, height = 25, dpi = 300)
 
 ```
 
